@@ -1,0 +1,136 @@
+﻿@{
+    ViewData["Title"] = "StrategieGame";
+}
+
+<!-- Hauptmenü -->
+<div id="menu">
+    <div class="menubar" style="justify-content: center; display: flex;">
+        <button id="ui_btn_lobby" class="menuButtons">Multiplayer Lobby</button>
+        <button id="ui_btn_singleChoice" class="menuButtons">Single Choice</button>
+        <button id="ui_btn_multipleChoice" class="menuButtons">Multiple Choice</button>
+        <button id="ui_btn_dropDown" class="menuButtons">Dropdown</button>
+        <button id="ui_btn_dragDrop" class="menuButtons">Drag Drop</button>
+        <button id="ui_btn_freeText" class="menuButtons">Free Text</button>
+        <button id="ui_btn_rateQuestion" class="menuButtons">Rate Question</button>
+        <span>Gold:</span>
+        <span>Year: Autumn 1614</span>
+    </div>
+    <div class="content">
+        <div id="myGameArea3" class="sidePanel">
+            <div class="panelSection">
+                <div class="panelTitle">Placeholder</div>
+            </div>
+        </div>
+
+        <canvas id="myGameArea" width="720" height="720"></canvas>
+
+        <div id="myGameArea2" class="sidePanel">
+            <div class="panelSection">
+                <div class="panelTitle">Coords</div>
+                <div class="panelRow"><span class="panelLabel">Y:</span> <span id="ui_coord_y">-</span></div>
+                <div class="panelRow"><span class="panelLabel">X:</span> <span id="ui_coord_x">-</span></div>
+            </div>
+            <div class="panelSection">
+                <div class="panelTitle">Unit</div>
+                <div class="panelRow"><span id="ui_unit">-</span></div>
+            </div>
+            <div class="panelSection">
+                <div class="panelTitle">Action</div>
+                <div class="panelRow"><span id="ui_action">-</span></div>
+            </div>
+            <div class="panelSection">
+                <div class="panelTitle">Controls</div>
+                <div class="buttonGroup">
+                    <button id="ui_btn_move" class="menuButtons">Move</button>
+                    <button id="ui_btn_build" class="menuButtons">Build</button>
+                    <button id="ui_btn_fight" class="menuButtons">Fight</button>
+                    <button id="ui_btn_test" class="menuButtons">Test</button>
+                </div>
+            </div>
+            <div class="panelSection">
+                <div class="panelTitle">Inventory</div>
+                <div class="panelRow panelMuted">coming soon…</div>
+            </div>
+        </div>
+    </div>
+    <div id="contextMenu"></div>
+</div>
+
+<!-- Lobby-Dialog -->
+<div id="lobbyDialog" title="Multiplayer Lobby" style="display:none;">
+    <div>
+        <button id="btnCreateLobby">Lobby erstellen</button>
+        <input type="text" id="lobbyCodeInput" placeholder="Lobby-Code">
+        <button id="btnJoinLobby">Beitreten</button>
+    </div>
+    <div id="playerList"></div>
+    <button id="btnStartGame" disabled>Spiel starten</button>
+    <span id="lobbyCodeDisplay" style="display:none;"></span>
+</div>
+
+<!-- ===== DIALOGE FÜR FRAGEN ===== -->
+<div id="singleChoiceDialog" title="Single Choice" style="display:none;">
+    <p>Wofür steht HTML?</p>
+    <button id="answer1" class="btn-primary">Hyper Text Markup Language</button>
+    <button id="answer2" class="btn-primary">Home Tool Markup Language</button>
+    <button id="answer3" class="btn-primary">Hyperlinks and Text Markup Language</button>
+    <button id="answer4" class="btn-primary">Hyper Tool Markup Language</button>
+</div>
+
+<div id="multipleChoiceDialog" title="Multiple Choice" style="display:none;">
+    <p>Welche der folgenden Sprachen sind Programmiersprachen?</p>
+    <label><input type="checkbox" name="answer" value="1"> HTML</label><br>
+    <label><input type="checkbox" name="answer" value="2"> CSS</label><br>
+    <label><input type="checkbox" name="answer" value="3"> JavaScript</label><br>
+    <label><input type="checkbox" name="answer" value="4"> Python</label><br>
+    <button id="submitMultipleChoice" class="btn-primary">Submit</button>
+</div>
+
+<div id="dropdownDialog" title="Dropdown" style="display:none;">
+    <p>Wähle eine Option:</p>
+    <select id="dropdownSelect">
+        <option value="option1">Option 1</option>
+        <option value="option2">Option 2</option>
+        <option value="option3">Option 3</option>
+    </select>
+    <button id="submitDropdown" class="btn-primary">Submit</button>
+</div>
+
+<div id="dragDropDialog" title="Drag & Drop" style="display:none;">
+    <p class="drop-sentence">
+        Der <span class="droppable"></span>
+        <span class="droppable"></span> auf der Straße.
+    </p>
+    <div class="card-container">
+        <span class="draggable">Elefant</span>
+        <span class="draggable">tanzt</span>
+    </div>
+</div>
+
+<div id="freeTextDialog" title="Freitext" style="display:none;">
+    <p>Was ist deine Lieblingsprogrammiersprache und warum?</p>
+    <textarea id="freeTextInput" rows="4" cols="50"></textarea><br>
+    <button id="submitFreeText" class="btn-primary">Submit</button>
+</div>
+
+<div id="rateQuestionDialog" title="Fragen bewerten" style="display:none;">
+    <h3>Wofür steht HTML?</h3>
+    <ul>
+        <li>HyperText Markup Language</li>
+        <li>Home Tool Markup Language</li>
+        <li>Hyperlinks and Text Markup Language</li>
+        <li>Hyper Tool Markup Language</li>
+    </ul>
+    <div id="footer">
+        <button class="btn-primary">Upvote</button>
+        <button class="btn-primary">Downvote</button>
+    </div>
+</div>
+
+<!-- jQuery & jQuery UI -->
+<script src="https://code.jquery.com/jquery-3.7.1.js"></script>
+<script src="https://code.jquery.com/ui/1.14.2/jquery-ui.js"></script>
+<link rel="stylesheet" href="https://code.jquery.com/ui/1.14.2/themes/base/jquery-ui.css">
+
+<!-- Dein Spiel-JavaScript -->
+<script src="~/js/game.js"></script>

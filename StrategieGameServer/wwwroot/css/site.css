@@ -1,0 +1,275 @@
+html {
+  font-size: 14px;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 16px;
+  }
+}
+
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
+  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
+}
+
+html {
+  position: relative;
+  min-height: 100%;
+}
+
+body {
+  margin-bottom: 60px;
+}
+
+.form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
+  color: var(--bs-secondary-color);
+  text-align: end;
+}
+
+.form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
+  text-align: start;
+}
+
+#myGameArea {
+    border: 1px solid #d3d3d3;
+    background-color: #f1f1f1;
+    box-shadow: 2em;
+    z-index: 10;
+}
+
+/* keep same area as the old canvas: 300x600 */
+#myGameArea2.sidePanel,
+#myGameArea3.sidePanel {
+    width: 300px;
+    height: 720px;
+    border: 1px solid #d3d3d3;
+    background-color: #f1f1f1;
+    box-sizing: border-box;
+    padding: 12px;
+    font-family: "helvetica", Courier, monospace;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.panelSection {
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.6);
+}
+
+.panelTitle {
+    font-weight: 700;
+    font-size: 16px;
+    margin-bottom: 8px;
+}
+
+.panelRow {
+    font-size: 12px;
+    margin: 4px 0;
+}
+
+.panelLabel {
+    display: inline-block;
+    width: 18px;
+    font-weight: 700;
+}
+
+.panelMuted {
+    opacity: 0.65;
+}
+
+.content {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    height: 90vh;
+    gap: 20px;
+}
+
+#contextMenu {
+    display: none;
+    position: absolute;
+    background: #454545bb;
+    color: rgb(255, 255, 255);
+    border: 1px solid #777;
+    cursor: pointer;
+    z-index: 100;
+    border: solid;
+    border-width: 2px;
+    border-color: rgb(161, 0, 0);
+    box-shadow: 3em;
+}
+
+.buttonGroup {
+    display: flex;
+    flex-wrap: wrap; /* allows wrapping */
+    gap: 8px; /* horizontal + vertical spacing */
+    align-items: flex-start;
+}
+
+.menuButtons {
+    border-radius: 1em;
+    padding: 0.6em 1em;
+    font-size: 0.75em;
+    cursor: pointer;
+}
+
+/* --- Modern jQuery UI Dialog Styling --- */
+
+/* The main dialog container */
+.ui-dialog {
+    border: none !important;
+    border-radius: 12px !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+    padding: 0 !important;
+    overflow: hidden;
+    background: #ffffff !important;
+    font-family: "Segoe UI", Roboto, sans-serif;
+}
+
+/* The Title Bar */
+.ui-dialog-titlebar {
+    background: #2c3e50 !important; /* Dark slate */
+    color: white !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 15px 20px !important;
+}
+
+.ui-dialog-title {
+    font-weight: 600 !important;
+    font-size: 1.1rem;
+}
+
+/* The Close Button (X) */
+.ui-dialog-titlebar-close {
+    background: transparent !important;
+    border: none !important;
+    right: 15px !important;
+}
+
+    .ui-dialog-titlebar-close:hover {
+        background: rgba(255, 255, 255, 0.2) !important;
+    }
+
+/* Content Area inside the Modal */
+.ui-dialog-content {
+    padding: 25px !important;
+    font-size: 1rem;
+    color: #333;
+    line-height: 1.6;
+}
+
+/* --- Styling Elements Inside Your Modals --- */
+
+/* Paragraphs and Labels */
+#singleChoiceDialog p,
+#multipleChoiceDialog p,
+#dropdownDialog p {
+    margin-bottom: 20px;
+    font-weight: 500;
+}
+
+/* Buttons inside modals */
+.ui-dialog-content button {
+    display: block;
+    width: 100%;
+    margin-bottom: 10px;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background: #f8f9fa;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.95rem;
+    text-align: left;
+}
+
+    .ui-dialog-content button:hover {
+        background: #e9ecef;
+        border-color: #3498db;
+        color: #3498db;
+        transform: translateY(-1px);
+    }
+
+/* Textarea and Select inputs */
+textarea,
+select {
+    width: 100%;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 15px;
+    font-family: inherit;
+}
+
+/* Specifically for Checkboxes */
+#multipleChoiceDialog label {
+    display: block;
+    background: #fdfdfd;
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin-bottom: 5px;
+    border: 1px solid #eee;
+}
+
+/* Overlay (Background dimming) */
+.ui-widget-overlay {
+    background: #000000 !important;
+    opacity: 0.5 !important;
+}
+
+/* Container for the sentence */
+.drop-sentence {
+    line-height: 2.5;
+    font-size: 1.2rem;
+    margin-bottom: 30px;
+}
+
+/* The Slot (Droppable) */
+.droppable {
+    display: inline-block;
+    width: 100px;
+    height: 30px;
+    border-bottom: 2px dashed #3498db;
+    background: #ecf0f1;
+    margin: 0 5px;
+    vertical-align: middle;
+    border-radius: 4px;
+    transition: background 0.3s;
+}
+
+    .droppable.ui-droppable-hover {
+        background: #d4e6f1;
+        border-color: #2980b9;
+    }
+
+    .droppable.ui-state-highlight {
+        background: #2ecc71;
+        border-style: solid;
+        color: white;
+    }
+
+/* The Card (Draggable) */
+.draggable {
+    display: inline-block;
+    padding: 8px 15px;
+    background: #34495e;
+    color: white;
+    border-radius: 6px;
+    cursor: grab;
+    margin-right: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    font-weight: bold;
+    user-select: none;
+}
+
+    .draggable:active {
+        cursor: grabbing;
+    }
+
+    .draggable.ui-draggable-dragging {
+        opacity: 0.8;
+        z-index: 1000;
+    }
