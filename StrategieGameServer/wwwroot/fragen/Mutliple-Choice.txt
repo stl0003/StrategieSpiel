@@ -1,0 +1,11 @@
+{
+  "type": "multipleChoice",
+  "question": "Welche der folgenden Sprachen sind Programmiersprachen?",
+  "options": [
+    "HTML",
+    "CSS",
+    "JavaScript",
+    "Python"
+  ],
+  "correctAnswers": [2, 3]
+}

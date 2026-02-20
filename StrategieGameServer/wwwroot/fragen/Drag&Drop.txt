@@ -1,0 +1,11 @@
+{
+  "type": "dragDrop",
+  "question": "Vervollst‰ndige den Satz.",
+  "sentence": "Der ___1___ ___2___ auf der Straﬂe.",
+  "placeholders": ["___1___", "___2___"],
+  "options": ["Elefant", "tanzt"],
+  "correctMapping": {
+    "___1___": "Elefant",
+    "___2___": "tanzt"
+  }
+}

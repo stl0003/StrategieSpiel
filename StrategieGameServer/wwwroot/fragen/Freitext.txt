@@ -1,0 +1,5 @@
+{
+  "type": "freeText",
+  "question": "Was ist deine Lieblingsprogrammiersprache und warum?",
+  "placeholder": "Deine Antwort hier..."
+}
