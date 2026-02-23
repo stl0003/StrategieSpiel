@@ -6,6 +6,5 @@
     "CSS",
     "JavaScript",
     "Python"
-  ],
-  "correctAnswers": [2, 3]
+  ]
 }
