@@ -8,5 +8,7 @@ namespace StrategieGameServer.Controllers
         {
             return View();
         }
+
+        
     }
 }

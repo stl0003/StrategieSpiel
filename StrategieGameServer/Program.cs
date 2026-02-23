@@ -1,5 +1,7 @@
 using StrategieGameServer.WebSocket;
-
+using StrategieGameServer.Models;
+using Microsoft.EntityFrameworkCore;
+using StrategieGameServer.Data;   // für GameDbContext
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
@@ -7,7 +9,11 @@ builder.Services.AddSingleton<LobbyManager>();
 builder.Services.AddSingleton<WebSocketConnectionManager>();
 builder.Services.AddScoped<GameWebSocketHandler>();
 
+builder.Services.AddDbContext<GameDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
 var app = builder.Build();
+
 
 if (!app.Environment.IsDevelopment())
 {
