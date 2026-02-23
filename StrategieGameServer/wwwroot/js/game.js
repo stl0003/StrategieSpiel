@@ -598,15 +598,12 @@ $(document).ready(function () {
         $("#rateQuestionDialog").dialog({ autoOpen: false, modal: true, width: 500 });
         console.log("Dialoge initialisiert.");
     } catch (e) {
-        console.error("Fehler-Details:", e.message)
+        console.error("Fehler beim Initialisieren der Dialoge:", e);
     }
 
     // Single Choice
     $("#ui_btn_singleChoice").on("click", function () {
         console.log("Single Choice Button geklickt");
-
-        loadQuestion('/fragen/Single-Choice.txt');
-
         $("#singleChoiceDialog").dialog("open");
     });
     $("#singleChoiceDialog button").on("click", function () {
@@ -618,9 +615,6 @@ $(document).ready(function () {
     // Multiple Choice
     $("#ui_btn_multipleChoice").on("click", function () {
         console.log("Multiple Choice Button geklickt");
-
-        loadQuestion('/fragen/Multiple-Choice.txt');
-
         $("#multipleChoiceDialog").dialog("open");
     });
     $("#submitMultipleChoice").on("click", function () {
@@ -635,9 +629,6 @@ $(document).ready(function () {
     // Dropdown
     $("#ui_btn_dropDown").on("click", function () {
         console.log("Dropdown Button geklickt");
-
-        loadQuestion('/fragen/Dropdown.txt');
-
         $("#dropdownDialog").dialog("open");
     });
     $("#submitDropdown").on("click", function () {
@@ -649,9 +640,6 @@ $(document).ready(function () {
     // Drag & Drop
     $("#ui_btn_dragDrop").on("click", function () {
         console.log("Drag & Drop Button geklickt");
-
-        loadQuestion('/fragen/Drag&Drop.txt');
-
         $("#dragDropDialog").dialog("open");
     });
     $(".draggable").draggable({ revert: "invalid", cursor: "move" });
@@ -673,9 +661,6 @@ $(document).ready(function () {
     // Free Text
     $("#ui_btn_freeText").on("click", function () {
         console.log("Free Text Button geklickt");
-
-        loadQuestion('/fragen/Freitext.txt');
-
         $("#freeTextDialog").dialog("open");
     });
     $("#submitFreeText").on("click", function () {
@@ -695,115 +680,6 @@ $(document).ready(function () {
         $("#rateQuestionDialog").dialog("close");
     });
 });
-
-const container = document.getElementById('quiz-container');
-const singleChoiceDialog = document.getElementById('singleChoiceDialog');
-const multipleChoiceDialog = document.getElementById('multipleChoiceDialog');
-const dropdownDialog = document.getElementById('dropdownDialog');
-const dragDropDialog = document.getElementById('dragDropDialog');
-const freeTextDialog = document.getElementById('freeTextDialog');
-
-
-function displaySingleChoice(data) {
-    singleChoiceDialog.innerHTML = `
-        <p><strong>${data.question}</strong></p>
-        <form id="quizForm">
-            ${data.options.map((opt, index) => `
-                <div class="radio-option">
-                    <input type="radio" id="choice-${index}" name="quiz-answer" value="${index}">
-                    <label for="choice-${index}">${opt}</label>
-                </div>
-            `).join('')}
-            <button type="button" onclick="checkRadioAnswer(${data.correctAnswer})">Submit</button>
-        </form>
-    `;
-}
-
-function displayMultipleChoice(data) {
-    multipleChoiceDialog.innerHTML = `
-        <p><strong>${data.question}</strong></p>
-        <div class="checkbox-group">
-            ${data.options.map((opt, index) => `
-                <div class="option-row">
-                    <input type="checkbox" id="opt-${index}" name="quiz-option" value="${index}">
-                    <label for="opt-${index}">${opt}</label>
-                </div>
-            `).join('')}
-        </div>
-        <button onclick="checkMultipleAnswers()">Submit Answers</button>
-    `;
-}
-
-function displayDragDrop(data) {
-    // 1. Process the sentence
-    // We use a global replace to find any placeholder format like ___1___
-    let formattedSentence = data.sentence;
-
-    data.placeholders.forEach(placeholder => {
-        formattedSentence = formattedSentence.replace(
-            placeholder,
-            `<span class="droppable" data-placeholder="${placeholder}"></span>`
-        );
-    });
-
-    // 2. Build the full HTML
-    dragDropDialog.innerHTML = `
-        <p class="drop-sentence">
-            ${formattedSentence}
-        </p>
-        <div class="card-container">
-            ${data.options.map(opt =>
-        `<span class="draggable" draggable="true">${opt}</span>`
-    ).join('')}
-        </div>
-    `;
-}
-
-
-function displayDropdown(data) {
-    dropdownDialog.innerHTML = `
-        <p>${data.question}</p>
-        <select id="quizSelect">
-            <option value="" disabled selected>Choose an option...</option>
-            ${data.options.map((opt, index) =>
-        `<option value="${index}">${opt}</option>`
-    ).join('')}
-        </select>
-    `;
-}
-
-function displayFreeText(data) {
-    freeTextDialog.innerHTML = `
-      <p>${data.question}</p>
-      <textarea id="freeTextInput" rows="4" cols="50"></textarea><br>
-      <button id="submitFreeText" class="btn-primary">Submit</button>`;
-}
-
-
-function loadQuestion(url) {
-    // Replace 'data.json' with the actual path to your file
-    fetch(url)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(data => {
-            // Now 'data' is your JavaScript object
-            switch (data.type) {
-                case "singleChoice": displaySingleChoice(data); break;
-                case "multipleChoice": displayMultipleChoice(data); break;
-                case "dragDrop": displayDragDrop(data); break;
-                case "dropdown": displayDropdown(data); break;
-                case "freeText": displayFreeText(data); break;
-            }
-
-        })
-        .catch(error => {
-            console.error('There was a problem with the fetch operation:', error);
-        });
-}
 
 // ============================================
 // NEUE WEBSOCKET-FUNKTIONALITÄT
@@ -1077,11 +953,7 @@ function onStartGame() {
     document.getElementById("ui_btn_fight").addEventListener("click", () => setAction("attack"));
 }
 
-
-
-
 // Start
 $(document).ready(function () {
     onStartGame();
 });
-
