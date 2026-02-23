@@ -70,24 +70,19 @@
 
 <!-- ===== DIALOGE FÜR FRAGEN ===== -->
 <div id="singleChoiceDialog" title="Single Choice" style="display:none;">
-    <p>Wofür steht HTML?</p>
-    <button id="answer1" class="btn-primary">Hyper Text Markup Language</button>
-    <button id="answer2" class="btn-primary">Home Tool Markup Language</button>
-    <button id="answer3" class="btn-primary">Hyperlinks and Text Markup Language</button>
-    <button id="answer4" class="btn-primary">Hyper Tool Markup Language</button>
 </div>
 
 <div id="multipleChoiceDialog" title="Multiple Choice" style="display:none;">
-    <p>Welche der folgenden Sprachen sind Programmiersprachen?</p>
-    <label><input type="checkbox" name="answer" value="1"> HTML</label><br>
-    <label><input type="checkbox" name="answer" value="2"> CSS</label><br>
-    <label><input type="checkbox" name="answer" value="3"> JavaScript</label><br>
-    <label><input type="checkbox" name="answer" value="4"> Python</label><br>
+    <p>Testfrage</p>
+    <label><input type="checkbox" name="answer" value="1">Antwort 1</label><br>
+    <label><input type="checkbox" name="answer" value="2">Antwort 2</label><br>
+    <label><input type="checkbox" name="answer" value="3">Antwort 3</label><br>
+    <label><input type="checkbox" name="answer" value="4">Antwort 4</label><br>
     <button id="submitMultipleChoice" class="btn-primary">Submit</button>
 </div>
 
 <div id="dropdownDialog" title="Dropdown" style="display:none;">
-    <p>Wähle eine Option:</p>
+    <p>Testoptionen:</p>
     <select id="dropdownSelect">
         <option value="option1">Option 1</option>
         <option value="option2">Option 2</option>
@@ -108,9 +103,8 @@
 </div>
 
 <div id="freeTextDialog" title="Freitext" style="display:none;">
-    <p>Was ist deine Lieblingsprogrammiersprache und warum?</p>
-    <textarea id="freeTextInput" rows="4" cols="50"></textarea><br>
-    <button id="submitFreeText" class="btn-primary">Submit</button>
+    <p>Freitext-Frage</p>
+    
 </div>
 
 <div id="rateQuestionDialog" title="Fragen bewerten" style="display:none;">
@@ -127,10 +121,11 @@
     </div>
 </div>
 
+<div id="quiz-container"></div>
+
 <!-- jQuery & jQuery UI -->
-<script src="https://code.jquery.com/jquery-3.7.1.js"></script>
-<script src="https://code.jquery.com/ui/1.14.2/jquery-ui.js"></script>
-<link rel="stylesheet" href="https://code.jquery.com/ui/1.14.2/themes/base/jquery-ui.css">
+
+
 
 <!-- Dein Spiel-JavaScript -->
 <script src="~/js/game.js"></script>
