@@ -1,8 +1,8 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
-using StrategieGameServer.Data;      // Für GameDbContext
-using StrategieGameServer.Models;    // Für Question
+using StrategieGameServer.Data;
+using StrategieGameServer.Models;
 
 namespace StrategieGameServer.Controllers
 {
@@ -20,84 +20,107 @@ namespace StrategieGameServer.Controllers
         /// <summary>
         /// Gibt eine zufällige Frage des angegebenen Typs zurück (ohne korrekte Antwort).
         /// </summary>
-        /// <param name="type">Fragetyp: singleChoice, multipleChoice, freeText, dropdown, dragDrop</param>
         [HttpGet]
-        public async Task<ActionResult<QuestionDto>> GetRandomQuestion([FromQuery] string type)
+        public async Task<ActionResult> GetRandomQuestion([FromQuery] string type)
         {
-            var question = await _context.Questions
-                .Where(q => q.Type == type)
-                .OrderBy(q => Guid.NewGuid()) // Zufällige Sortierung (für SQL Server)
-                .FirstOrDefaultAsync();
-
-            if (question == null)
-                return NotFound($"Keine Frage vom Typ '{type}' gefunden.");
-
-            var dto = new QuestionDto
+            try
             {
-                Id = question.Id,
-                Type = question.Type,
-                QuestionText = question.QuestionText,
-                Options = !string.IsNullOrEmpty(question.OptionsJson)
-                    ? JsonSerializer.Deserialize<List<string>>(question.OptionsJson)
-                    : null,
-                Placeholder = question.Placeholder,
-                SentenceTemplate = question.SentenceTemplate,
-                Placeholders = !string.IsNullOrEmpty(question.Placeholders)
-                    ? JsonSerializer.Deserialize<List<string>>(question.Placeholders)
-                    : null,
-                OptionsMapping = !string.IsNullOrEmpty(question.OptionsMapping)
-                    ? JsonSerializer.Deserialize<Dictionary<string, string>>(question.OptionsMapping)
-                    : null
-            };
+                if (string.IsNullOrWhiteSpace(type))
+                    return BadRequest(new { error = "Der Parameter 'type' ist erforderlich." });
 
-            return Ok(dto);
+                var question = await _context.Questions
+                    .Where(q => q.Type == type)
+                    .OrderBy(q => Guid.NewGuid())
+                    .FirstOrDefaultAsync();
+
+                if (question == null)
+                    return NotFound(new { error = $"Keine Frage vom Typ '{type}' gefunden." });
+
+                var dto = new QuestionDto
+                {
+                    Id = question.Id,
+                    Type = question.Type,
+                    QuestionText = question.QuestionText,
+                    Options = !string.IsNullOrEmpty(question.OptionsJson)
+                        ? JsonSerializer.Deserialize<List<string>>(question.OptionsJson)
+                        : null,
+                    Placeholder = question.Placeholder,
+                    SentenceTemplate = question.SentenceTemplate,
+                    Placeholders = !string.IsNullOrEmpty(question.Placeholders)
+                        ? JsonSerializer.Deserialize<List<string>>(question.Placeholders)
+                        : null,
+                    OptionsMapping = !string.IsNullOrEmpty(question.OptionsMapping)
+                        ? JsonSerializer.Deserialize<Dictionary<string, string>>(question.OptionsMapping)
+                        : null
+                };
+
+                return Ok(dto);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = $"Interner Serverfehler: {ex.Message}" });
+            }
         }
 
         /// <summary>
         /// Prüft, ob die vom Client gesendete Antwort korrekt ist.
         /// </summary>
         [HttpPost("answer")]
-        public async Task<ActionResult<AnswerResponse>> CheckAnswer([FromBody] AnswerRequest request)
+        public async Task<ActionResult> CheckAnswer([FromBody] AnswerRequest request)
         {
-            var question = await _context.Questions.FindAsync(request.QuestionId);
-            if (question == null)
-                return NotFound("Frage nicht gefunden.");
-
-            bool isCorrect = false;
-
-            switch (question.Type)
+            try
             {
-                case "singleChoice":
-                    isCorrect = CheckSingleChoice(question, request.Answer);
-                    break;
-                case "multipleChoice":
-                    isCorrect = CheckMultipleChoice(question, request.Answer);
-                    break;
-                case "freeText":
-                    // Freitext kann nicht automatisch korrigiert werden – hier immer true.
-                    // Optional: Antwort speichern und später manuell bewerten lassen.
-                    isCorrect = true;
-                    break;
-                case "dropdown":
-                    isCorrect = CheckDropdown(question, request.Answer);
-                    break;
-                case "dragDrop":
-                    isCorrect = CheckDragDrop(question, request.Answer);
-                    break;
-                default:
-                    return BadRequest("Unbekannter Fragetyp.");
-            }
+                if (request == null || request.QuestionId <= 0)
+                    return BadRequest(new { error = "Ungültige Anfrage. 'QuestionId' ist erforderlich." });
 
-            return Ok(new AnswerResponse { Correct = isCorrect });
+                var question = await _context.Questions.FindAsync(request.QuestionId);
+                if (question == null)
+                    return NotFound(new { error = "Frage nicht gefunden." });
+
+                bool isCorrect;
+
+                switch (question.Type)
+                {
+                    case "singleChoice":
+                        isCorrect = CheckSingleChoice(question, request.Answer);
+                        break;
+                    case "multipleChoice":
+                        isCorrect = CheckMultipleChoice(question, request.Answer);
+                        break;
+                    case "freeText":
+                        isCorrect = true;
+                        break;
+                    case "dropdown":
+                        isCorrect = CheckDropdown(question, request.Answer);
+                        break;
+                    case "dragDrop":
+                        isCorrect = CheckDragDrop(question, request.Answer);
+                        break;
+                    default:
+                        return BadRequest(new { error = $"Unbekannter Fragetyp: {question.Type}" });
+                }
+
+                return Ok(new AnswerResponse { Correct = isCorrect });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = $"Interner Serverfehler: {ex.Message}" });
+            }
         }
 
-        // ----- Hilfsmethoden für die Antwortprüfung -----
+        // ----- Hilfsmethoden für die Antwortprüfung (mit Validierung) -----
 
         private bool CheckSingleChoice(Question question, JsonElement answer)
         {
-            // Erwartet wird ein Integer (Index der gewählten Antwort)
             if (answer.ValueKind != JsonValueKind.Number)
-                return false;
+                throw new ArgumentException("Bei 'singleChoice' muss die Antwort eine Zahl (Index) sein.");
+
+            if (string.IsNullOrEmpty(question.CorrectAnswerJson))
+                throw new InvalidOperationException("Keine korrekte Antwort für diese Frage in der Datenbank.");
 
             int selectedIndex = answer.GetInt32();
             int correctIndex = JsonSerializer.Deserialize<int>(question.CorrectAnswerJson);
@@ -106,26 +129,29 @@ namespace StrategieGameServer.Controllers
 
         private bool CheckMultipleChoice(Question question, JsonElement answer)
         {
-            // Erwartet wird ein Array von Integern (Indizes der gewählten Antworten)
             if (answer.ValueKind != JsonValueKind.Array)
-                return false;
+                throw new ArgumentException("Bei 'multipleChoice' muss die Antwort ein Array von Zahlen (Indizes) sein.");
+
+            if (string.IsNullOrEmpty(question.CorrectAnswerJson))
+                throw new InvalidOperationException("Keine korrekte Antwort für diese Frage in der Datenbank.");
 
             var selectedIndices = JsonSerializer.Deserialize<List<int>>(answer.GetRawText());
             var correctIndices = JsonSerializer.Deserialize<List<int>>(question.CorrectAnswerJson);
 
             if (selectedIndices == null || correctIndices == null)
-                return false;
+                throw new InvalidOperationException("Fehler beim Deserialisieren der Antwortdaten.");
 
-            // Prüfen auf gleiche Länge und gleiche Elemente (Reihenfolge egal)
             return selectedIndices.Count == correctIndices.Count &&
                    !selectedIndices.Except(correctIndices).Any();
         }
 
         private bool CheckDropdown(Question question, JsonElement answer)
         {
-            // Erwartet wird ein Integer (Index der gewählten Option)
             if (answer.ValueKind != JsonValueKind.Number)
-                return false;
+                throw new ArgumentException("Bei 'dropdown' muss die Antwort eine Zahl (Index) sein.");
+
+            if (string.IsNullOrEmpty(question.CorrectAnswerJson))
+                throw new InvalidOperationException("Keine korrekte Antwort für diese Frage in der Datenbank.");
 
             int selectedIndex = answer.GetInt32();
             int correctIndex = JsonSerializer.Deserialize<int>(question.CorrectAnswerJson);
@@ -134,42 +160,41 @@ namespace StrategieGameServer.Controllers
 
         private bool CheckDragDrop(Question question, JsonElement answer)
         {
-            // Erwartet wird ein JSON-Objekt, das die Zuordnung der Platzhalter zu den gewählten Optionen enthält.
-            // Beispiel: {"___1___": "Elefant", "___2___": "tanzt"}
             if (answer.ValueKind != JsonValueKind.Object)
-                return false;
+                throw new ArgumentException("Bei 'dragDrop' muss die Antwort ein JSON-Objekt mit Platzhalter-Zuordnungen sein.");
+
+            if (string.IsNullOrEmpty(question.OptionsMapping))
+                throw new InvalidOperationException("Keine korrekte Zuordnung für diese Frage in der Datenbank.");
 
             var userMapping = JsonSerializer.Deserialize<Dictionary<string, string>>(answer.GetRawText());
             var correctMapping = JsonSerializer.Deserialize<Dictionary<string, string>>(question.OptionsMapping);
 
             if (userMapping == null || correctMapping == null)
-                return false;
+                throw new InvalidOperationException("Fehler beim Deserialisieren der Zuordnungsdaten.");
 
-            // Prüfen, ob alle Platzhalter korrekt zugeordnet wurden
             return correctMapping.All(kv =>
                 userMapping.ContainsKey(kv.Key) && userMapping[kv.Key] == kv.Value
             );
         }
     }
 
-    // ----- DTOs -----
-
+    // ----- DTOs (unverändert) -----
     public class QuestionDto
     {
         public int Id { get; set; }
         public string Type { get; set; } = string.Empty;
         public string QuestionText { get; set; } = string.Empty;
-        public List<string>? Options { get; set; }          // Für Single/Multiple Choice, Dropdown
-        public string? Placeholder { get; set; }            // Für Freitext
-        public string? SentenceTemplate { get; set; }       // Für Drag&Drop
-        public List<string>? Placeholders { get; set; }     // Für Drag&Drop (Liste der Platzhalter)
-        public Dictionary<string, string>? OptionsMapping { get; set; } // Für Drag&Drop (korrekte Zuordnung)
+        public List<string>? Options { get; set; }
+        public string? Placeholder { get; set; }
+        public string? SentenceTemplate { get; set; }
+        public List<string>? Placeholders { get; set; }
+        public Dictionary<string, string>? OptionsMapping { get; set; }
     }
 
     public class AnswerRequest
     {
         public int QuestionId { get; set; }
-        public JsonElement Answer { get; set; } // Kann Zahl, Array, Objekt oder String sein
+        public JsonElement Answer { get; set; }
     }
 
     public class AnswerResponse
