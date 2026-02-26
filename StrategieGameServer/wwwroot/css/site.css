@@ -220,56 +220,39 @@ select {
     opacity: 0.5 !important;
 }
 
-/* Container for the sentence */
-.drop-sentence {
-    line-height: 2.5;
-    font-size: 1.2rem;
-    margin-bottom: 30px;
-}
-
-/* The Slot (Droppable) */
+/* The "holes" in the sentence */
 .droppable {
     display: inline-block;
-    width: 100px;
+    width: 80px;
     height: 30px;
-    border-bottom: 2px dashed #3498db;
-    background: #ecf0f1;
+    border-bottom: 2px solid #007bff;
     margin: 0 5px;
     vertical-align: middle;
-    border-radius: 4px;
-    transition: background 0.3s;
+    transition: background-color 0.2s;
 }
 
-    .droppable.ui-droppable-hover {
-        background: #d4e6f1;
-        border-color: #2980b9;
-    }
+/* Highlight when dragging over a valid spot */
+.droppable-hover {
+    background-color: rgba(0, 123, 255, 0.2);
+}
 
-    .droppable.ui-state-highlight {
-        background: #2ecc71;
-        border-style: solid;
-        color: white;
-    }
-
-/* The Card (Draggable) */
+/* The word cards */
 .draggable {
     display: inline-block;
-    padding: 8px 15px;
-    background: #34495e;
-    color: white;
-    border-radius: 6px;
+    padding: 5px 15px;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 4px;
     cursor: grab;
-    margin-right: 10px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    font-weight: bold;
-    user-select: none;
+    margin: 5px;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+    z-index: 100;
 }
 
-    .draggable:active {
-        cursor: grabbing;
-    }
-
-    .draggable.ui-draggable-dragging {
-        opacity: 0.8;
-        z-index: 1000;
-    }
+.card-container {
+    margin-top: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    min-height: 50px;
+}

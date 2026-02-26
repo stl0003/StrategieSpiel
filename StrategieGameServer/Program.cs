@@ -10,8 +10,16 @@ builder.Services.AddSingleton<WebSocketConnectionManager>();
 builder.Services.AddScoped<GameWebSocketHandler>();
 
 builder.Services.AddDbContext<GameDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        sqlServerOptionsAction: sqlOptions =>
+        {
+            // This enables the retry logic mentioned in your error
+            sqlOptions.EnableRetryOnFailure(
+                maxRetryCount: 5,
+                maxRetryDelay: TimeSpan.FromSeconds(30),
+                errorNumbersToAdd: null);
+        }));
 var app = builder.Build();
 
 

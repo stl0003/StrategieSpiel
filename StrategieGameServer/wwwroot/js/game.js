@@ -605,7 +605,7 @@ $(document).ready(function () {
     $("#ui_btn_singleChoice").on("click", function () {
         console.log("Single Choice Button geklickt");
 
-        loadQuestion('/fragen/Single-Choice.txt');
+        loadQuestion('singleChoice');
 
         $("#singleChoiceDialog").dialog("open");
     });
@@ -619,7 +619,7 @@ $(document).ready(function () {
     $("#ui_btn_multipleChoice").on("click", function () {
         console.log("Multiple Choice Button geklickt");
 
-        loadQuestion('/fragen/Multiple-Choice.txt');
+        loadQuestion('multipleChoice');
 
         $("#multipleChoiceDialog").dialog("open");
     });
@@ -636,7 +636,7 @@ $(document).ready(function () {
     $("#ui_btn_dropDown").on("click", function () {
         console.log("Dropdown Button geklickt");
 
-        loadQuestion('/fragen/Dropdown.txt');
+        loadQuestion('dropdown');
 
         $("#dropdownDialog").dialog("open");
     });
@@ -650,7 +650,7 @@ $(document).ready(function () {
     $("#ui_btn_dragDrop").on("click", function () {
         console.log("Drag & Drop Button geklickt");
 
-        loadQuestion('/fragen/Drag&Drop.txt');
+        loadQuestion('dragDrop');
 
         $("#dragDropDialog").dialog("open");
     });
@@ -674,7 +674,7 @@ $(document).ready(function () {
     $("#ui_btn_freeText").on("click", function () {
         console.log("Free Text Button geklickt");
 
-        loadQuestion('/fragen/Freitext.txt');
+        loadQuestion('freeText');
 
         $("#freeTextDialog").dialog("open");
     });
@@ -714,7 +714,7 @@ function displaySingleChoice(data) {
                     <label for="choice-${index}">${opt}</label>
                 </div>
             `).join('')}
-            <button type="button" onclick="checkRadioAnswer(${data.correctAnswer})">Submit</button>
+            <button type="button" onclick="checkSingleChoice(${data.correctAnswer})">Submit</button>
         </form>
     `;
 }
@@ -730,15 +730,13 @@ function displayMultipleChoice(data) {
                 </div>
             `).join('')}
         </div>
-        <button onclick="checkMultipleAnswers()">Submit Answers</button>
+        <button onclick="checkMultipleChoice()">Submit Answers</button>
     `;
 }
 
 function displayDragDrop(data) {
     // 1. Process the sentence
-    // We use a global replace to find any placeholder format like ___1___
     let formattedSentence = data.sentence;
-
     data.placeholders.forEach(placeholder => {
         formattedSentence = formattedSentence.replace(
             placeholder,
@@ -747,16 +745,58 @@ function displayDragDrop(data) {
     });
 
     // 2. Build the full HTML
+    const dragDropDialog = document.getElementById('dragDropDialog'); // Ensure this ID matches yours
     dragDropDialog.innerHTML = `
         <p class="drop-sentence">
             ${formattedSentence}
         </p>
         <div class="card-container">
-            ${data.options.map(opt =>
-        `<span class="draggable" draggable="true">${opt}</span>`
-    ).join('')}
+            ${data.options.map(opt => `<span class="draggable">${opt}</span>`).join('')}
         </div>
     `;
+
+    // 3. Initialize jQuery UI Drag & Drop
+    $(dragDropDialog).find(".draggable").draggable({
+        revert: "invalid", // Card flies back if dropped in the wrong place
+        cursor: "move",
+        stack: ".draggable"
+    });
+
+    $(dragDropDialog).find(".droppable").droppable({
+        accept: ".draggable",
+        hoverClass: "droppable-hover",
+        drop: function (event, ui) {
+            const $this = $(this);
+
+            // Prevent multiple items in one spot if needed
+            if ($this.children().length > 0) return;
+
+            // Move the draggable element inside the span
+            ui.draggable.position({
+                my: "center",
+                at: "center",
+                of: $this
+            });
+
+            ui.draggable.appendTo($this).css({
+                top: "0",
+                left: "0",
+                position: "relative"
+            });
+        }
+    });
+
+    // Add this to your displayDragDrop function
+    $(".card-container").droppable({
+        accept: ".draggable",
+        drop: function (event, ui) {
+            ui.draggable.appendTo($(this)).css({
+                position: "relative",
+                top: "0",
+                left: "0"
+            });
+        }
+    });
 }
 
 
@@ -779,29 +819,63 @@ function displayFreeText(data) {
       <button id="submitFreeText" class="btn-primary">Submit</button>`;
 }
 
+function checkSingleChoice(questionId, selectedIndex) {
+    fetch('/api/questions/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            questionId: questionId,
+            answer: selectedIndex // Sent as a number, which JsonElement handles
+        })
+    })
+        .then(res => res.json())
+        .then(data => {
+            if (data.correct) {
+                alert("Correct! You earned a move.");
+                // Logic to reward the player here
+            } else {
+                alert("Wrong answer!");
+            }
+            $("#singleChoiceDialog").dialog("close");
+        });
+}
 
-function loadQuestion(url) {
-    // Replace 'data.json' with the actual path to your file
+function loadQuestion(questionType) {
+    // We pass the 'type' string (e.g., 'singleChoice') to the API
+    const url = `/api/questions?type=${questionType}`;
+
     fetch(url)
         .then(response => {
             if (!response.ok) {
-                throw new Error('Network response was not ok');
+                // Handle 404 (No question found) or 500 (Server error)
+                return response.json().then(err => { throw new Error(err.error); });
             }
             return response.json();
         })
         .then(data => {
-            // Now 'data' is your JavaScript object
-            switch (data.type) {
-                case "singleChoice": displaySingleChoice(data); break;
-                case "multipleChoice": displayMultipleChoice(data); break;
-                case "dragDrop": displayDragDrop(data); break;
-                case "dropdown": displayDropdown(data); break;
-                case "freeText": displayFreeText(data); break;
-            }
+            // Mapping the API's QuestionDto to your display functions
+            // Note: The controller returns "questionText", so we map it to "question"
+            const formattedData = {
+                id: data.id,
+                type: data.type,
+                question: data.questionText,
+                options: data.options,
+                sentence: data.sentenceTemplate,
+                placeholders: data.placeholders,
+                placeholderText: data.placeholder // for freeText
+            };
 
+            switch (data.type) {
+                case "singleChoice": displaySingleChoice(formattedData); break;
+                case "multipleChoice": displayMultipleChoice(formattedData); break;
+                case "dragDrop": displayDragDrop(formattedData); break;
+                case "dropdown": displayDropdown(formattedData); break;
+                case "freeText": displayFreeText(formattedData); break;
+            }
         })
         .catch(error => {
-            console.error('There was a problem with the fetch operation:', error);
+            console.error('Quiz Error:', error.message);
+            alert("Fehler: " + error.message);
         });
 }
 
