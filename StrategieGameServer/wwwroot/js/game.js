@@ -602,87 +602,11 @@ $(document).ready(function () {
     }
 
     // Single Choice
-    $("#ui_btn_singleChoice").on("click", function () {
-        console.log("Single Choice Button geklickt");
-
-        loadQuestion('singleChoice');
-
-        $("#singleChoiceDialog").dialog("open");
-    });
-    $("#singleChoiceDialog button").on("click", function () {
-        const answerText = $(this).text();
-        alert("You selected: " + answerText);
-        $("#singleChoiceDialog").dialog("close");
-    });
-
-    // Multiple Choice
-    $("#ui_btn_multipleChoice").on("click", function () {
-        console.log("Multiple Choice Button geklickt");
-
-        loadQuestion('multipleChoice');
-
-        $("#multipleChoiceDialog").dialog("open");
-    });
-    $("#submitMultipleChoice").on("click", function () {
-        const selectedAnswers = [];
-        $("#multipleChoiceDialog input[name='answer']:checked").each(function () {
-            selectedAnswers.push($(this).parent().text().trim());
-        });
-        alert("You selected: " + selectedAnswers.join(", "));
-        $("#multipleChoiceDialog").dialog("close");
-    });
-
-    // Dropdown
-    $("#ui_btn_dropDown").on("click", function () {
-        console.log("Dropdown Button geklickt");
-
-        loadQuestion('dropdown');
-
-        $("#dropdownDialog").dialog("open");
-    });
-    $("#submitDropdown").on("click", function () {
-        const selectedOption = $("#dropdownSelect").val();
-        alert("You selected: " + selectedOption);
-        $("#dropdownDialog").dialog("close");
-    });
-
-    // Drag & Drop
-    $("#ui_btn_dragDrop").on("click", function () {
-        console.log("Drag & Drop Button geklickt");
-
-        loadQuestion('dragDrop');
-
-        $("#dragDropDialog").dialog("open");
-    });
-    $(".draggable").draggable({ revert: "invalid", cursor: "move" });
-    $(".droppable").droppable({
-        accept: ".draggable",
-        classes: { "ui-droppable-hover": "ui-droppable-hover" },
-        drop: function (event, ui) {
-            $(this).addClass("ui-state-highlight").text(ui.draggable.text());
-            ui.draggable.hide();
-            if ($(".draggable:visible").length === 0) {
-                setTimeout(function () {
-                    alert("Satz vervollständigt!");
-                    $("#dragDropDialog").dialog("close");
-                }, 500);
-            }
-        }
-    });
-
-    // Free Text
-    $("#ui_btn_freeText").on("click", function () {
-        console.log("Free Text Button geklickt");
-
-        loadQuestion('freeText');
-
-        $("#freeTextDialog").dialog("open");
-    });
-    $("#submitFreeText").on("click", function () {
-        const freeText = $("#freeTextInput").val();
-        alert("You entered: " + freeText);
-        $("#freeTextDialog").dialog("close");
-    });
+    $("#ui_btn_singleChoice").on("click", () => { loadQuestion('singleChoice'); $("#singleChoiceDialog").dialog("open"); });
+    $("#ui_btn_multipleChoice").on("click", () => { loadQuestion('multipleChoice'); $("#multipleChoiceDialog").dialog("open"); });
+    $("#ui_btn_dropDown").on("click", () => { loadQuestion('dropdown'); $("#dropdownDialog").dialog("open"); });
+    $("#ui_btn_dragDrop").on("click", () => { loadQuestion('dragDrop'); $("#dragDropDialog").dialog("open"); });
+    $("#ui_btn_freeText").on("click", () => { loadQuestion('freeText'); $("#freeTextDialog").dialog("open"); });
 
     // Rate Question
     $("#ui_btn_rateQuestion").on("click", function () {
@@ -705,6 +629,7 @@ const freeTextDialog = document.getElementById('freeTextDialog');
 
 
 function displaySingleChoice(data) {
+    // We store the data.id so we can pass it to the check function
     singleChoiceDialog.innerHTML = `
         <p><strong>${data.question}</strong></p>
         <form id="quizForm">
@@ -714,131 +639,167 @@ function displaySingleChoice(data) {
                     <label for="choice-${index}">${opt}</label>
                 </div>
             `).join('')}
-            <button type="button" onclick="checkSingleChoice(${data.correctAnswer})">Submit</button>
+            <button type="button" onclick="validateAnswer(${data.id}, 'singleChoice')">Submit</button>
         </form>
     `;
 }
-
 function displayMultipleChoice(data) {
     multipleChoiceDialog.innerHTML = `
         <p><strong>${data.question}</strong></p>
         <div class="checkbox-group">
             ${data.options.map((opt, index) => `
                 <div class="option-row">
-                    <input type="checkbox" id="opt-${index}" name="quiz-option" value="${index}">
+                    <input type="checkbox" id="opt-${index}" name="quiz-multi-answer" value="${index}">
                     <label for="opt-${index}">${opt}</label>
                 </div>
             `).join('')}
         </div>
-        <button onclick="checkMultipleChoice()">Submit Answers</button>
+        <hr>
+        <button type="button" onclick="validateAnswer(${data.id}, 'multipleChoice')">Submit Answers</button>
     `;
 }
 
 function displayDragDrop(data) {
-    // 1. Process the sentence
     let formattedSentence = data.sentence;
-    data.placeholders.forEach(placeholder => {
+
+    data.placeholders.forEach(ph => {
         formattedSentence = formattedSentence.replace(
-            placeholder,
-            `<span class="droppable" data-placeholder="${placeholder}"></span>`
+            ph,
+            `<span class="droppable" data-ph-key="${ph}" style="border-bottom: 2px dashed #666; min-width: 80px; display: inline-block; min-height: 1.2em; vertical-align: bottom;"></span>`
         );
     });
 
-    // 2. Build the full HTML
-    const dragDropDialog = document.getElementById('dragDropDialog'); // Ensure this ID matches yours
+    const dragDropDialog = document.getElementById('dragDropDialog');
     dragDropDialog.innerHTML = `
-        <p class="drop-sentence">
-            ${formattedSentence}
-        </p>
-        <div class="card-container">
-            ${data.options.map(opt => `<span class="draggable">${opt}</span>`).join('')}
+        <p class="drop-sentence" style="line-height: 2.5em;">${formattedSentence}</p>
+        
+        <div id="original-card-container" class="card-container" style="margin-top: 20px; min-height: 60px; border: 1px solid #ccc; padding: 10px; background: #f9f9f9;">
+            ${data.options.map(opt => `<span class="draggable" style="background: #fff; padding: 5px 10px; margin: 5px; cursor: move; border: 1px solid #999; display: inline-block; border-radius: 3px; box-shadow: 1px 1px 2px rgba(0,0,0,0.1);">${opt}</span>`).join('')}
+        </div>
+        
+        <div style="margin-top: 20px; text-align: right;">
+            <button type="button" onclick="resetDragDrop()" style="background: #f0f0f0; border: 1px solid #ccc; padding: 5px 10px; cursor: pointer; margin-right: 10px;">Reset</button>
+            <button type="button" onclick="validateAnswer(${data.id}, 'dragDrop')" style="background: #4CAF50; color: white; border: none; padding: 5px 15px; cursor: pointer;">Check Alignment</button>
         </div>
     `;
 
-    // 3. Initialize jQuery UI Drag & Drop
+    // Re-initialize jQuery UI
     $(dragDropDialog).find(".draggable").draggable({
-        revert: "invalid", // Card flies back if dropped in the wrong place
-        cursor: "move",
-        stack: ".draggable"
+        revert: "invalid",
+        stack: ".draggable",
+        containment: "#dragDropDialog"
     });
 
     $(dragDropDialog).find(".droppable").droppable({
         accept: ".draggable",
-        hoverClass: "droppable-hover",
+        hoverClass: "ui-state-hover",
         drop: function (event, ui) {
-            const $this = $(this);
-
-            // Prevent multiple items in one spot if needed
-            if ($this.children().length > 0) return;
-
-            // Move the draggable element inside the span
-            ui.draggable.position({
-                my: "center",
-                at: "center",
-                of: $this
-            });
-
-            ui.draggable.appendTo($this).css({
-                top: "0",
-                left: "0",
-                position: "relative"
-            });
+            $(this).append(ui.draggable.css({ top: 0, left: 0, position: "relative" }));
         }
     });
 
-    // Add this to your displayDragDrop function
-    $(".card-container").droppable({
+    // Allow dropping back into the main container
+    $("#original-card-container").droppable({
         accept: ".draggable",
         drop: function (event, ui) {
-            ui.draggable.appendTo($(this)).css({
-                position: "relative",
-                top: "0",
-                left: "0"
-            });
+            $(this).append(ui.draggable.css({ top: 0, left: 0, position: "relative" }));
         }
     });
 }
 
+function resetDragDrop() {
+    const container = document.getElementById('original-card-container');
+    const draggables = document.querySelectorAll('#dragDropDialog .draggable');
 
+    draggables.forEach(card => {
+        // Move card back to the starting container
+        container.appendChild(card);
+
+        // Reset jQuery UI positions so they don't look "stuck"
+        $(card).css({
+            top: 0,
+            left: 0,
+            position: "relative"
+        });
+    });
+
+    console.log("Drag & Drop reset performed.");
+}
 function displayDropdown(data) {
     dropdownDialog.innerHTML = `
-        <p>${data.question}</p>
-        <select id="quizSelect">
-            <option value="" disabled selected>Choose an option...</option>
-            ${data.options.map((opt, index) =>
-        `<option value="${index}">${opt}</option>`
-    ).join('')}
+        <p><strong>${data.question}</strong></p>
+        <select id="quizSelect" style="width:100%; margin: 10px 0; padding: 5px;">
+            <option value="" disabled selected>Wähle eine Option...</option>
+            ${data.options.map((opt, index) => `<option value="${index}">${opt}</option>`).join('')}
         </select>
+        <button type="button" onclick="validateAnswer(${data.id}, 'dropdown')">Submit</button>
     `;
 }
 
 function displayFreeText(data) {
     freeTextDialog.innerHTML = `
-      <p>${data.question}</p>
-      <textarea id="freeTextInput" rows="4" cols="50"></textarea><br>
-      <button id="submitFreeText" class="btn-primary">Submit</button>`;
+        <p><strong>${data.question}</strong></p>
+        <textarea id="freeTextInput" rows="4" style="width:100%; margin-bottom:10px;"></textarea><br>
+        <button type="button" onclick="validateAnswer(${data.id}, 'freeText')">Submit</button>
+    `;
 }
 
-function checkSingleChoice(questionId, selectedIndex) {
+
+function validateAnswer(questionId, type) {
+    let userAnswer;
+
+    if (type === 'singleChoice') {
+        const selected = document.querySelector('input[name="quiz-answer"]:checked');
+        if (!selected) return alert("Bitte wähle eine Option!");
+        userAnswer = parseInt(selected.value);
+    }
+    else if (type === 'multipleChoice') {
+        const checkedBoxes = document.querySelectorAll('input[name="quiz-multi-answer"]:checked');
+        if (checkedBoxes.length === 0) return alert("Wähle mindestens eine Antwort!");
+        userAnswer = Array.from(checkedBoxes).map(cb => parseInt(cb.value));
+    }
+    else if (type === 'dropdown') {
+        const select = document.getElementById('quizSelect');
+        if (!select.value) return alert("Bitte wähle eine Option aus!");
+        userAnswer = parseInt(select.value);
+    }
+    else if (type === 'dragDrop') {
+        userAnswer = {};
+        const dropZones = document.querySelectorAll('#dragDropDialog .droppable');
+        let allFilled = true;
+        dropZones.forEach(zone => {
+            const key = zone.getAttribute('data-ph-key');
+            const val = zone.textContent.trim();
+            if (!val) allFilled = false;
+            userAnswer[key] = val;
+        });
+        if (!allFilled) return alert("Bitte fülle alle Lücken aus!");
+    }
+    else if (type === 'freeText') {
+        const text = document.getElementById('freeTextInput').value;
+        if (!text.trim()) return alert("Bitte gib einen Text ein!");
+        userAnswer = text;
+    }
+
+    // Server-Abfrage
     fetch('/api/questions/answer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            questionId: questionId,
-            answer: selectedIndex // Sent as a number, which JsonElement handles
-        })
+        body: JSON.stringify({ QuestionId: questionId, Answer: userAnswer })
     })
         .then(res => res.json())
-        .then(data => {
-            if (data.correct) {
-                alert("Correct! You earned a move.");
-                // Logic to reward the player here
+        .then(result => {
+            if (result.correct) {
+                alert("✅ Richtig!");
+                $(`#${type}Dialog`).dialog("close");
+                handleQuizSuccess();
             } else {
-                alert("Wrong answer!");
+                alert("❌ Leider falsch. Versuche es nochmal!");
             }
-            $("#singleChoiceDialog").dialog("close");
-        });
+        })
+        .catch(err => console.error("Validation Error:", err));
 }
+
 
 function loadQuestion(questionType) {
     // We pass the 'type' string (e.g., 'singleChoice') to the API
@@ -877,6 +838,16 @@ function loadQuestion(questionType) {
             console.error('Quiz Error:', error.message);
             alert("Fehler: " + error.message);
         });
+}
+
+function handleQuizSuccess() {
+    // Example: If a unit was waiting to move, execute that move now
+    if (pendingMove) {
+        const { unit, tile, tx, ty } = pendingMove;
+        unit.moveTo(tx, ty);
+        pendingMove = null; // Clear the queue
+        updateInfoPanel();
+    }
 }
 
 
