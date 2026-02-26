@@ -24,6 +24,8 @@ let uiUnit = document.getElementById("ui_unit");
 let uiAction = document.getElementById("ui_action");
 let uiBtnBuild = document.getElementById("ui_btn_build");
 
+let battleTimer = null; // Global reference for the countdown
+
 // Assets (Pfade mit führendem Slash!)
 const assets = {
     tiles: {},
@@ -92,32 +94,62 @@ const ACTIONS = {
             return !occupied;
         },
         execute: function (unit, tile, tx, ty) {
+            // 1. Physically move the unit to the new grid coordinates
             unit.moveTo(tx, ty);
+
+            // 2. TRAP LOGIC: Check if the tile contains a hidden trap
             if (tile.hasTrap) {
-                unit.hp -= 20;
-                tile.hasTrap = false;
+                unit.hp -= 20; // Inflict damage
+                tile.hasTrap = false; // Remove the trap after it's triggered
+
+                // Visual feedback for trap damage
+                myFloatingTexts.push(
+                    new FloatingText(
+                        tx * TILE_SIZE + TILE_SIZE / 2,
+                        ty * TILE_SIZE,
+                        "-20 HP (Trap)",
+                        "#FF00FF"
+                    )
+                );
+
+                // Check if the unit died from the trap
                 if (unit.hp <= 0) {
                     myUnits = myUnits.filter((u) => u !== unit);
                     selectedUnit = null;
                 }
             }
+
+            // 3. ITEM COLLECTION LOGIC: Check for items on the new tile
             let itemIndex = myItems.findIndex(
                 (i) => i.gridX === tx && i.gridY === ty
             );
+
             if (itemIndex !== -1) {
                 let item = myItems[itemIndex];
+
+                // Ensure the unit has an inventory array (initialized in unit constructor)
+                if (!unit.inventory) unit.inventory = [];
+
+                // Add the item to unit's internal storage
+                unit.inventory.push(item.type);
+                console.log(`${unit.nameKey} collected: ${item.type}`);
+
+                // Immediate effects for specific items (like Health Packs)
+                let particleColor = "#FFFF00"; // Default yellow for items
                 if (item.type === "HEALTH_PACK") {
                     unit.hp = Math.min(unit.maxHp, unit.hp + 30);
+                    particleColor = "#00FF00"; // Green for healing
                     myFloatingTexts.push(
                         new FloatingText(
-                            unit.gridX * TILE_SIZE + TILE_SIZE / 2,
-                            unit.gridY * TILE_SIZE,
+                            tx * TILE_SIZE + TILE_SIZE / 2,
+                            ty * TILE_SIZE,
                             "+30 HP",
                             "#00FF00"
                         )
                     );
                 }
-                let particleColor = item.type === "HEALTH_PACK" ? "#00FF00" : "#FFFF00";
+
+                // Generate visual particles at the collection point
                 for (let i = 0; i < 15; i++) {
                     myParticles.push(
                         new Particle(
@@ -127,12 +159,12 @@ const ACTIONS = {
                         )
                     );
                 }
-                if (item.type === "HEALTH_PACK") {
-                    unit.hp = Math.min(unit.maxHp, unit.hp + 30);
-                } else if (item.type === "P_PACK") {
-                    console.log("Power pack picked up!");
-                }
+
+                // Remove the item from the game world
                 myItems.splice(itemIndex, 1);
+
+                // Refresh the Inventory UI display
+                listItems();
             }
         },
     },
@@ -439,6 +471,7 @@ function unit(width, height, img, gridX, gridY, nameKey, id = 0, playerId = 0) {
     this.activeAction = null;
     this.id = id;
     this.playerId = playerId;
+    this.inventory = []; // NEW: Array to store collected item types or objects
 
     this.update = function () {
         let ctx = myGameArea.context;
@@ -666,11 +699,14 @@ function displaySingleChoice(data) {
 }
 function displayMultipleChoice(data) {
     multipleChoiceDialog.innerHTML = `
+        <div id="quiz-timer-container" style="width: 100%; background-color: #eee; height: 10px; margin-bottom: 15px; border-radius: 5px; overflow: hidden;">
+            <div id="quiz-timer-bar" style="width: 100%; background-color: #4CAF50; height: 100%; transition: width 1s linear;"></div>
+        </div>
         <p><strong>${data.question}</strong></p>
         <div class="checkbox-group">
             ${data.options.map((opt, index) => `
                 <div class="option-row">
-                    <input type="checkbox" id="opt-${index}" name="quiz-multi-answer" value="${index}">
+                    <input type="checkbox" id="opt-${index}" name="q-multi" value="${index}">
                     <label for="opt-${index}">${opt}</label>
                 </div>
             `).join('')}
@@ -679,7 +715,6 @@ function displayMultipleChoice(data) {
         <button type="button" onclick="validateAnswer(${data.id}, 'multipleChoice')">Submit Answers</button>
     `;
 }
-
 function displayDragDrop(data) {
     let formattedSentence = data.sentence;
 
@@ -862,6 +897,144 @@ function loadQuestion(questionType) {
 }
 
 
+// Battle Logic
+function checkForFight() {
+    let battleTriggered = false;
+
+    for (let i = 0; i < myUnits.length; i++) {
+        for (let j = i + 1; j < myUnits.length; j++) {
+            let u1 = myUnits[i];
+            let u2 = myUnits[j];
+
+            let dx = Math.abs(u1.gridX - u2.gridX);
+            let dy = Math.abs(u1.gridY - u2.gridY);
+
+            // Adjacency check (North, South, East, West)
+            if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
+                triggerBattle(u1, u2);
+                battleTriggered = true;
+                return;
+            }
+        }
+    }
+    if (!battleTriggered) toastr.info("Keine Gegner in Reichweite.");
+}
+
+function triggerBattle(unit1, unit2) {
+    fetch('/fragen/battle.json')
+        .then(response => {
+            if (!response.ok) throw new Error("Battle file not found");
+            return response.json();
+        })
+        .then(data => {
+            currentBattleData = data;
+
+            const formattedData = {
+                id: data.Id,
+                type: data.Type,
+                // Using a <div> or <br> to separate the combatants from the question
+                question: `<div style="font-size: 1.2em; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px;">
+                                ⚔️ ${data.Player1} vs ${data.Player2}
+                           </div>
+                           ${data.QuestionText}`,
+                options: data.OptionsJson
+            };
+
+            $("#multipleChoiceDialog").dialog("open");
+            displayMultipleChoice(formattedData);
+            startBattleCountdown(parseInt(data.Duration));
+        })
+        .catch(error => toastr.error("Fehler: " + error.message));
+}
+function startBattleCountdown(seconds) {
+    if (battleTimer) clearInterval(battleTimer);
+
+    const totalTime = seconds;
+    let timeLeft = seconds;
+    const timerBar = document.getElementById('quiz-timer-bar');
+
+    // Initial state: ensure it starts at 100%
+    if (timerBar) {
+        timerBar.style.width = "100%";
+        timerBar.style.backgroundColor = "#4CAF50";
+    }
+
+    battleTimer = setInterval(() => {
+        timeLeft--;
+
+        // Calculate percentage
+        const percentage = Math.max(0, (timeLeft / totalTime) * 100);
+
+        if (timerBar) {
+            timerBar.style.width = percentage + "%";
+
+            // Color feedback
+            if (percentage < 30) {
+                timerBar.style.backgroundColor = "#f44336";
+            } else if (percentage < 60) {
+                timerBar.style.backgroundColor = "#ffeb3b";
+            }
+        }
+
+        $("#multipleChoiceDialog").dialog("option", "title", `Kampf! Zeit: ${timeLeft}s`);
+
+        if (timeLeft <= 0) {
+            clearInterval(battleTimer);
+
+            // Wait 1 second for the CSS transition to reach 0 before closing
+            setTimeout(() => {
+                if ($("#multipleChoiceDialog").dialog("isOpen")) {
+                    alert("⏰ Zeit abgelaufen! Der Kampf wurde verloren.");
+                    $("#multipleChoiceDialog").dialog("close");
+
+                    if (selectedUnit) {
+                        selectedUnit.hp -= 10;
+                        updateInfoPanel();
+                    }
+                }
+            }, 1000);
+        }
+    }, 1000);
+}
+
+// Ensure timer stops if player submits early
+function handleQuizSuccess() {
+    if (battleTimer) clearInterval(battleTimer);
+    // Example: If a unit was waiting to move, execute that move now
+    if (pendingMove) {
+        const { unit, tile, tx, ty } = pendingMove;
+        unit.moveTo(tx, ty);
+        pendingMove = null; // Clear the queue
+        updateInfoPanel();
+    }
+}
+
+/**
+ * Updates the Inventory UI panel to show collected items for each unit.
+ * Uses item icons from assets.sources and formats the item types for display.
+ */
+function listItems() {
+    const inventoryPanel = document.getElementById("ui_inventory");
+    if (!inventoryPanel) return;
+
+    let htmlContent = "";
+
+    myUnits.forEach(u => {
+        // If inventory is empty, show a placeholder message
+        let iconsHtml = (u.inventory && u.inventory.length > 0)
+            ? u.inventory.map(type => `<img src="${assets.sources[type]}" width="20" height="20" style="margin-right:2px;">`).join('')
+            : "<i style='color: #888; font-size: 0.8em;'>No items collected</i>";
+
+        htmlContent += `
+            <div style="margin-bottom: 10px;">
+                <strong>${u.nameKey}:</strong><br>
+                ${iconsHtml}
+            </div>
+        `;
+    });
+
+    inventoryPanel.innerHTML = htmlContent;
+}
 // ============================================
 // NEUE WEBSOCKET-FUNKTIONALITÄT
 // ============================================
@@ -1129,6 +1302,8 @@ function onStartGame() {
             myUnits.push(new unit(TILE_SIZE, TILE_SIZE, assets.tiles.PIONEER_GREEN, 28, 28, "GREEN", 3, 3));
         }
 
+        listItems();
+
         setInterval(spawnRandomItem, 3000);
     });
 
@@ -1137,93 +1312,13 @@ function onStartGame() {
     document.getElementById("ui_btn_move").addEventListener("click", () => setAction("move"));
     document.getElementById("ui_btn_fight").addEventListener("click", () => setAction("attack"));
     document.getElementById("ui_btn_checkForFight").addEventListener("click", () => checkForFight());
+    document.getElementById("ui_btn_checkForFight").addEventListener("click", () => listItems());
+
 
 }
 
-let battleTimer = null; // Global reference for the countdown
 
-function checkForFight() {
-    let battleTriggered = false;
 
-    for (let i = 0; i < myUnits.length; i++) {
-        for (let j = i + 1; j < myUnits.length; j++) {
-            let u1 = myUnits[i];
-            let u2 = myUnits[j];
-
-            let dx = Math.abs(u1.gridX - u2.gridX);
-            let dy = Math.abs(u1.gridY - u2.gridY);
-
-            // Adjacency check (North, South, East, West)
-            if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
-                triggerBattle(u1, u2);
-                battleTriggered = true;
-                return;
-            }
-        }
-    }
-    if (!battleTriggered) toastr.info("Keine Gegner in Reichweite.");
-}
-
-function triggerBattle(unit1, unit2) {
-    fetch('/fragen/battle.json')
-        .then(response => {
-            if (!response.ok) throw new Error("Battle file not found");
-            return response.json();
-        })
-        .then(data => {
-            // Mapping the new JSON keys to the format displayMultipleChoice expects
-            const formattedData = {
-                id: 11,
-                type: data.Type,
-                question: `${data.Player1} vs ${data.Player2}: ${data.QuestionText}`,
-                options: data.OptionsJson,
-                correctAnswer: data.CorrectAnswerJson // Passed for local validation if needed
-            };
-
-            $("#multipleChoiceDialog").dialog("open");
-            displayMultipleChoice(formattedData);
-
-            // Start the Countdown Timer
-            startBattleCountdown(parseInt(data.Duration));
-        })
-        .catch(error => toastr.error("Fehler: " + error.message));
-}
-
-function startBattleCountdown(seconds) {
-    if (battleTimer) clearInterval(battleTimer);
-
-    let timeLeft = seconds;
-    console.log(`Battle started! Time: ${timeLeft}s`);
-
-    battleTimer = setInterval(() => {
-        timeLeft--;
-
-        // Update UI or Title (Optional)
-        $("#multipleChoiceDialog").dialog("option", "title", `Kampf! Zeit: ${timeLeft}s`);
-
-        if (timeLeft <= 0) {
-            clearInterval(battleTimer);
-            alert("⏰ Zeit abgelaufen! Der Kampf wurde verloren.");
-            $("#multipleChoiceDialog").dialog("close");
-
-            // Logic for a lost battle (e.g., damage both units)
-            selectedUnit.hp -= 10;
-            updateInfoPanel();
-        }
-    }, 1000);
-}
-
-// Ensure timer stops if player submits early
-function handleQuizSuccess() {
-    if (battleTimer) clearInterval(battleTimer);
-     // Example: If a unit was waiting to move, execute that move now
-    if (pendingMove) {
-        const { unit, tile, tx, ty } = pendingMove;
-        unit.moveTo(tx, ty);
-        pendingMove = null; // Clear the queue
-        updateInfoPanel();
-    }
-}
 
 // Start
 $(document).ready(function () {
