@@ -201,6 +201,8 @@ const ACTIONS = {
     },
 };
 
+
+// ContextMenu
 function rebuildContextMenu() {
     if (!menu) return;
     menu.innerHTML = "";
@@ -219,6 +221,8 @@ function rebuildContextMenu() {
         menu.appendChild(item);
     });
 }
+
+
 
 function setAction(type) {
     if (!selectedUnit) {
@@ -331,14 +335,29 @@ function updateGameArea() {
 
     myItems.forEach((item) => item.update());
 
+    // --- ENHANCED HOVER HIGHLIGHT ---
     if (hoverTileX !== null && hoverTileY !== null) {
-        ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-        ctx.lineWidth = 2;
-        let hX = hoverTileX * TILE_SIZE;
-        let hY = hoverTileY * TILE_SIZE;
-        ctx.fillRect(hX, hY, TILE_SIZE, TILE_SIZE);
-        ctx.strokeRect(hX, hY, TILE_SIZE, TILE_SIZE);
+        // Find if there is a unit under the mouse
+        let unitUnderMouse = myUnits.find(u => u.gridX === hoverTileX && u.gridY === hoverTileY);
+
+        if (unitUnderMouse) {
+            // Draw a glowing "Selection" ring for Units
+            ctx.beginPath();
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+            ctx.lineWidth = 3;
+            // Pulsing effect using Date.now()
+            let pulse = Math.sin(Date.now() / 150) * 2;
+            ctx.strokeRect(
+                unitUnderMouse.gridX * TILE_SIZE - pulse,
+                unitUnderMouse.gridY * TILE_SIZE - pulse,
+                TILE_SIZE + (pulse * 2),
+                TILE_SIZE + (pulse * 2)
+            );
+        } else {
+            // Standard subtle square for empty tiles
+            ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+            ctx.fillRect(hoverTileX * TILE_SIZE, hoverTileY * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        }
     }
 
     myUnits.forEach((u) => u.update());
@@ -618,6 +637,8 @@ $(document).ready(function () {
         alert("You clicked: " + buttonText);
         $("#rateQuestionDialog").dialog("close");
     });
+
+    $("#ui_btn_toastrError").on("click", () => { toastr.error("Error aufgetreten!") });
 });
 
 const container = document.getElementById('quiz-container');
@@ -840,16 +861,6 @@ function loadQuestion(questionType) {
         });
 }
 
-function handleQuizSuccess() {
-    // Example: If a unit was waiting to move, execute that move now
-    if (pendingMove) {
-        const { unit, tile, tx, ty } = pendingMove;
-        unit.moveTo(tx, ty);
-        pendingMove = null; // Clear the queue
-        updateInfoPanel();
-    }
-}
-
 
 // ============================================
 // NEUE WEBSOCKET-FUNKTIONALITÄT
@@ -1011,16 +1022,31 @@ $("#btnStartGame").click(function () {
 // ANGEPASSTE CANVAS-EVENT-HANDLER (ersetzen die ursprünglichen)
 // ============================================
 canvas.addEventListener("click", function (event) {
-    menu.style.display = "none";
+    if (menu) menu.style.display = "none";
 
     let rect = canvas.getBoundingClientRect();
     let tX = Math.floor((event.clientX - rect.left) / TILE_SIZE);
     let tY = Math.floor((event.clientY - rect.top) / TILE_SIZE);
 
+    // 1. Check if there is a unit at the clicked position
     let unitHit = myUnits.find((u) => u.gridX === tX && u.gridY === tY);
     let targetTile = myTiles[tY] ? myTiles[tY][tX] : null;
 
+    // 2. SELECTION LOGIC: If we clicked a unit, try to select it
+    if (unitHit) {
+        // Multi-player check: only select if it's your unit
+        if (!isMultiplayer || unitHit.playerId === myPlayerId) {
+            selectedUnit = unitHit;
+            // Default to 'move' if no action is set
+            if (!selectedUnit.activeAction) selectedUnit.activeAction = "move";
+            updateInfoPanel();
+            return; // Stop here so we don't accidentally "move" to our own tile
+        }
+    }
+
+    // 3. ACTION LOGIC: If a unit is already selected and we clicked a tile (not a unit)
     if (selectedUnit && selectedUnit.activeAction) {
+        // Multiplayer Socket Logic
         if (isMultiplayer && socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({
                 type: "playerAction",
@@ -1029,33 +1055,22 @@ canvas.addEventListener("click", function (event) {
                 targetX: tX,
                 targetY: tY
             }));
-            return;
         } else {
+            // Local Logic
             const action = ACTIONS[selectedUnit.activeAction];
             if (action && action.canExecute(selectedUnit, targetTile, tX, tY)) {
-                action.execute(selectedUnit, targetTile, tX, tY);
+
+                // YOUR QUIZ INTEGRATION (Optional but recommended based on previous steps)
+                if (selectedUnit.activeAction === "move") {
+                    pendingMove = { unit: selectedUnit, tile: targetTile, tx: tX, ty: tY };
+                    loadQuestion('singleChoice');
+                } else {
+                    action.execute(selectedUnit, targetTile, tX, tY);
+                }
                 updateInfoPanel();
             }
         }
-        return;
     }
-
-    if (!isMultiplayer) {
-        if (unitHit) {
-            selectedUnit = unitHit;
-            if (!selectedUnit.activeAction) selectedUnit.activeAction = "move";
-            updateInfoPanel();
-            return;
-        }
-    } else {
-        if (unitHit && unitHit.playerId === myPlayerId) {
-            selectedUnit = unitHit;
-            if (!selectedUnit.activeAction) selectedUnit.activeAction = "move";
-            updateInfoPanel();
-            return;
-        }
-    }
-    updateInfoPanel();
 });
 
 canvas.addEventListener("contextmenu", function (e) {
@@ -1121,6 +1136,93 @@ function onStartGame() {
     document.getElementById("ui_btn_test").addEventListener("click", () => setAction("test"));
     document.getElementById("ui_btn_move").addEventListener("click", () => setAction("move"));
     document.getElementById("ui_btn_fight").addEventListener("click", () => setAction("attack"));
+    document.getElementById("ui_btn_checkForFight").addEventListener("click", () => checkForFight());
+
+}
+
+let battleTimer = null; // Global reference for the countdown
+
+function checkForFight() {
+    let battleTriggered = false;
+
+    for (let i = 0; i < myUnits.length; i++) {
+        for (let j = i + 1; j < myUnits.length; j++) {
+            let u1 = myUnits[i];
+            let u2 = myUnits[j];
+
+            let dx = Math.abs(u1.gridX - u2.gridX);
+            let dy = Math.abs(u1.gridY - u2.gridY);
+
+            // Adjacency check (North, South, East, West)
+            if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
+                triggerBattle(u1, u2);
+                battleTriggered = true;
+                return;
+            }
+        }
+    }
+    if (!battleTriggered) toastr.info("Keine Gegner in Reichweite.");
+}
+
+function triggerBattle(unit1, unit2) {
+    fetch('/fragen/battle.json')
+        .then(response => {
+            if (!response.ok) throw new Error("Battle file not found");
+            return response.json();
+        })
+        .then(data => {
+            // Mapping the new JSON keys to the format displayMultipleChoice expects
+            const formattedData = {
+                id: 11,
+                type: data.Type,
+                question: `${data.Player1} vs ${data.Player2}: ${data.QuestionText}`,
+                options: data.OptionsJson,
+                correctAnswer: data.CorrectAnswerJson // Passed for local validation if needed
+            };
+
+            $("#multipleChoiceDialog").dialog("open");
+            displayMultipleChoice(formattedData);
+
+            // Start the Countdown Timer
+            startBattleCountdown(parseInt(data.Duration));
+        })
+        .catch(error => toastr.error("Fehler: " + error.message));
+}
+
+function startBattleCountdown(seconds) {
+    if (battleTimer) clearInterval(battleTimer);
+
+    let timeLeft = seconds;
+    console.log(`Battle started! Time: ${timeLeft}s`);
+
+    battleTimer = setInterval(() => {
+        timeLeft--;
+
+        // Update UI or Title (Optional)
+        $("#multipleChoiceDialog").dialog("option", "title", `Kampf! Zeit: ${timeLeft}s`);
+
+        if (timeLeft <= 0) {
+            clearInterval(battleTimer);
+            alert("⏰ Zeit abgelaufen! Der Kampf wurde verloren.");
+            $("#multipleChoiceDialog").dialog("close");
+
+            // Logic for a lost battle (e.g., damage both units)
+            selectedUnit.hp -= 10;
+            updateInfoPanel();
+        }
+    }, 1000);
+}
+
+// Ensure timer stops if player submits early
+function handleQuizSuccess() {
+    if (battleTimer) clearInterval(battleTimer);
+     // Example: If a unit was waiting to move, execute that move now
+    if (pendingMove) {
+        const { unit, tile, tx, ty } = pendingMove;
+        unit.moveTo(tx, ty);
+        pendingMove = null; // Clear the queue
+        updateInfoPanel();
+    }
 }
 
 // Start
