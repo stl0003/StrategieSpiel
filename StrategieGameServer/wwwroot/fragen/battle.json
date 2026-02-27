@@ -1,0 +1,15 @@
+﻿{
+  "Id": 11,
+  "Player1": "Johnny",
+  "Player2": "Franzi",
+  "Duration": "30",
+  "Type": "multipleChoice",
+  "QuestionText": "Welche der folgenden Sprachen sind Programmiersprachen?",
+  "OptionsJson": [
+    "HTML",
+    "CSS",
+    "JavaScript",
+    "Python"
+  ],
+  "CorrectAnswerJson": [ 2, 3 ]
+}

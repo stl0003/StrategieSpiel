@@ -24,6 +24,8 @@ let uiUnit = document.getElementById("ui_unit");
 let uiAction = document.getElementById("ui_action");
 let uiBtnBuild = document.getElementById("ui_btn_build");
 
+let battleTimer = null; // Global reference for the countdown
+
 // Assets (Pfade mit führendem Slash!)
 const assets = {
     tiles: {},
@@ -92,32 +94,62 @@ const ACTIONS = {
             return !occupied;
         },
         execute: function (unit, tile, tx, ty) {
+            // 1. Physically move the unit to the new grid coordinates
             unit.moveTo(tx, ty);
+
+            // 2. TRAP LOGIC: Check if the tile contains a hidden trap
             if (tile.hasTrap) {
-                unit.hp -= 20;
-                tile.hasTrap = false;
+                unit.hp -= 20; // Inflict damage
+                tile.hasTrap = false; // Remove the trap after it's triggered
+
+                // Visual feedback for trap damage
+                myFloatingTexts.push(
+                    new FloatingText(
+                        tx * TILE_SIZE + TILE_SIZE / 2,
+                        ty * TILE_SIZE,
+                        "-20 HP (Trap)",
+                        "#FF00FF"
+                    )
+                );
+
+                // Check if the unit died from the trap
                 if (unit.hp <= 0) {
                     myUnits = myUnits.filter((u) => u !== unit);
                     selectedUnit = null;
                 }
             }
+
+            // 3. ITEM COLLECTION LOGIC: Check for items on the new tile
             let itemIndex = myItems.findIndex(
                 (i) => i.gridX === tx && i.gridY === ty
             );
+
             if (itemIndex !== -1) {
                 let item = myItems[itemIndex];
+
+                // Ensure the unit has an inventory array (initialized in unit constructor)
+                if (!unit.inventory) unit.inventory = [];
+
+                // Add the item to unit's internal storage
+                unit.inventory.push(item.type);
+                console.log(`${unit.nameKey} collected: ${item.type}`);
+
+                // Immediate effects for specific items (like Health Packs)
+                let particleColor = "#FFFF00"; // Default yellow for items
                 if (item.type === "HEALTH_PACK") {
                     unit.hp = Math.min(unit.maxHp, unit.hp + 30);
+                    particleColor = "#00FF00"; // Green for healing
                     myFloatingTexts.push(
                         new FloatingText(
-                            unit.gridX * TILE_SIZE + TILE_SIZE / 2,
-                            unit.gridY * TILE_SIZE,
+                            tx * TILE_SIZE + TILE_SIZE / 2,
+                            ty * TILE_SIZE,
                             "+30 HP",
                             "#00FF00"
                         )
                     );
                 }
-                let particleColor = item.type === "HEALTH_PACK" ? "#00FF00" : "#FFFF00";
+
+                // Generate visual particles at the collection point
                 for (let i = 0; i < 15; i++) {
                     myParticles.push(
                         new Particle(
@@ -127,12 +159,12 @@ const ACTIONS = {
                         )
                     );
                 }
-                if (item.type === "HEALTH_PACK") {
-                    unit.hp = Math.min(unit.maxHp, unit.hp + 30);
-                } else if (item.type === "P_PACK") {
-                    console.log("Power pack picked up!");
-                }
+
+                // Remove the item from the game world
                 myItems.splice(itemIndex, 1);
+
+                // Refresh the Inventory UI display
+                listItems();
             }
         },
     },
@@ -201,6 +233,8 @@ const ACTIONS = {
     },
 };
 
+
+// ContextMenu
 function rebuildContextMenu() {
     if (!menu) return;
     menu.innerHTML = "";
@@ -219,6 +253,8 @@ function rebuildContextMenu() {
         menu.appendChild(item);
     });
 }
+
+
 
 function setAction(type) {
     if (!selectedUnit) {
@@ -331,14 +367,29 @@ function updateGameArea() {
 
     myItems.forEach((item) => item.update());
 
+    // --- ENHANCED HOVER HIGHLIGHT ---
     if (hoverTileX !== null && hoverTileY !== null) {
-        ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-        ctx.lineWidth = 2;
-        let hX = hoverTileX * TILE_SIZE;
-        let hY = hoverTileY * TILE_SIZE;
-        ctx.fillRect(hX, hY, TILE_SIZE, TILE_SIZE);
-        ctx.strokeRect(hX, hY, TILE_SIZE, TILE_SIZE);
+        // Find if there is a unit under the mouse
+        let unitUnderMouse = myUnits.find(u => u.gridX === hoverTileX && u.gridY === hoverTileY);
+
+        if (unitUnderMouse) {
+            // Draw a glowing "Selection" ring for Units
+            ctx.beginPath();
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+            ctx.lineWidth = 3;
+            // Pulsing effect using Date.now()
+            let pulse = Math.sin(Date.now() / 150) * 2;
+            ctx.strokeRect(
+                unitUnderMouse.gridX * TILE_SIZE - pulse,
+                unitUnderMouse.gridY * TILE_SIZE - pulse,
+                TILE_SIZE + (pulse * 2),
+                TILE_SIZE + (pulse * 2)
+            );
+        } else {
+            // Standard subtle square for empty tiles
+            ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+            ctx.fillRect(hoverTileX * TILE_SIZE, hoverTileY * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        }
     }
 
     myUnits.forEach((u) => u.update());
@@ -420,6 +471,7 @@ function unit(width, height, img, gridX, gridY, nameKey, id = 0, playerId = 0) {
     this.activeAction = null;
     this.id = id;
     this.playerId = playerId;
+    this.inventory = []; // NEW: Array to store collected item types or objects
 
     this.update = function () {
         let ctx = myGameArea.context;
@@ -602,87 +654,11 @@ $(document).ready(function () {
     }
 
     // Single Choice
-    $("#ui_btn_singleChoice").on("click", function () {
-        console.log("Single Choice Button geklickt");
-
-        loadQuestion('/fragen/Single-Choice.txt');
-
-        $("#singleChoiceDialog").dialog("open");
-    });
-    $("#singleChoiceDialog button").on("click", function () {
-        const answerText = $(this).text();
-        alert("You selected: " + answerText);
-        $("#singleChoiceDialog").dialog("close");
-    });
-
-    // Multiple Choice
-    $("#ui_btn_multipleChoice").on("click", function () {
-        console.log("Multiple Choice Button geklickt");
-
-        loadQuestion('/fragen/Multiple-Choice.txt');
-
-        $("#multipleChoiceDialog").dialog("open");
-    });
-    $("#submitMultipleChoice").on("click", function () {
-        const selectedAnswers = [];
-        $("#multipleChoiceDialog input[name='answer']:checked").each(function () {
-            selectedAnswers.push($(this).parent().text().trim());
-        });
-        alert("You selected: " + selectedAnswers.join(", "));
-        $("#multipleChoiceDialog").dialog("close");
-    });
-
-    // Dropdown
-    $("#ui_btn_dropDown").on("click", function () {
-        console.log("Dropdown Button geklickt");
-
-        loadQuestion('/fragen/Dropdown.txt');
-
-        $("#dropdownDialog").dialog("open");
-    });
-    $("#submitDropdown").on("click", function () {
-        const selectedOption = $("#dropdownSelect").val();
-        alert("You selected: " + selectedOption);
-        $("#dropdownDialog").dialog("close");
-    });
-
-    // Drag & Drop
-    $("#ui_btn_dragDrop").on("click", function () {
-        console.log("Drag & Drop Button geklickt");
-
-        loadQuestion('/fragen/Drag&Drop.txt');
-
-        $("#dragDropDialog").dialog("open");
-    });
-    $(".draggable").draggable({ revert: "invalid", cursor: "move" });
-    $(".droppable").droppable({
-        accept: ".draggable",
-        classes: { "ui-droppable-hover": "ui-droppable-hover" },
-        drop: function (event, ui) {
-            $(this).addClass("ui-state-highlight").text(ui.draggable.text());
-            ui.draggable.hide();
-            if ($(".draggable:visible").length === 0) {
-                setTimeout(function () {
-                    alert("Satz vervollständigt!");
-                    $("#dragDropDialog").dialog("close");
-                }, 500);
-            }
-        }
-    });
-
-    // Free Text
-    $("#ui_btn_freeText").on("click", function () {
-        console.log("Free Text Button geklickt");
-
-        loadQuestion('/fragen/Freitext.txt');
-
-        $("#freeTextDialog").dialog("open");
-    });
-    $("#submitFreeText").on("click", function () {
-        const freeText = $("#freeTextInput").val();
-        alert("You entered: " + freeText);
-        $("#freeTextDialog").dialog("close");
-    });
+    $("#ui_btn_singleChoice").on("click", () => { loadQuestion('singleChoice'); $("#singleChoiceDialog").dialog("open"); });
+    $("#ui_btn_multipleChoice").on("click", () => { loadQuestion('multipleChoice'); $("#multipleChoiceDialog").dialog("open"); });
+    $("#ui_btn_dropDown").on("click", () => { loadQuestion('dropdown'); $("#dropdownDialog").dialog("open"); });
+    $("#ui_btn_dragDrop").on("click", () => { loadQuestion('dragDrop'); $("#dragDropDialog").dialog("open"); });
+    $("#ui_btn_freeText").on("click", () => { loadQuestion('freeText'); $("#freeTextDialog").dialog("open"); });
 
     // Rate Question
     $("#ui_btn_rateQuestion").on("click", function () {
@@ -694,6 +670,8 @@ $(document).ready(function () {
         alert("You clicked: " + buttonText);
         $("#rateQuestionDialog").dialog("close");
     });
+
+    $("#ui_btn_toastrError").on("click", () => { toastr.error("Error aufgetreten!") });
 });
 
 const container = document.getElementById('quiz-container');
@@ -705,6 +683,7 @@ const freeTextDialog = document.getElementById('freeTextDialog');
 
 
 function displaySingleChoice(data) {
+    // We store the data.id so we can pass it to the check function
     singleChoiceDialog.innerHTML = `
         <p><strong>${data.question}</strong></p>
         <form id="quizForm">
@@ -714,98 +693,348 @@ function displaySingleChoice(data) {
                     <label for="choice-${index}">${opt}</label>
                 </div>
             `).join('')}
-            <button type="button" onclick="checkRadioAnswer(${data.correctAnswer})">Submit</button>
+            <button type="button" onclick="validateAnswer(${data.id}, 'singleChoice')">Submit</button>
         </form>
     `;
 }
-
 function displayMultipleChoice(data) {
     multipleChoiceDialog.innerHTML = `
+        <div id="quiz-timer-container" style="width: 100%; background-color: #eee; height: 10px; margin-bottom: 15px; border-radius: 5px; overflow: hidden;">
+            <div id="quiz-timer-bar" style="width: 100%; background-color: #4CAF50; height: 100%; transition: width 1s linear;"></div>
+        </div>
         <p><strong>${data.question}</strong></p>
         <div class="checkbox-group">
             ${data.options.map((opt, index) => `
                 <div class="option-row">
-                    <input type="checkbox" id="opt-${index}" name="quiz-option" value="${index}">
+                    <input type="checkbox" id="opt-${index}" name="q-multi" value="${index}">
                     <label for="opt-${index}">${opt}</label>
                 </div>
             `).join('')}
         </div>
-        <button onclick="checkMultipleAnswers()">Submit Answers</button>
+        <hr>
+        <button type="button" onclick="validateAnswer(${data.id}, 'multipleChoice')">Submit Answers</button>
     `;
 }
-
 function displayDragDrop(data) {
-    // 1. Process the sentence
-    // We use a global replace to find any placeholder format like ___1___
     let formattedSentence = data.sentence;
 
-    data.placeholders.forEach(placeholder => {
+    data.placeholders.forEach(ph => {
         formattedSentence = formattedSentence.replace(
-            placeholder,
-            `<span class="droppable" data-placeholder="${placeholder}"></span>`
+            ph,
+            `<span class="droppable" data-ph-key="${ph}" style="border-bottom: 2px dashed #666; min-width: 80px; display: inline-block; min-height: 1.2em; vertical-align: bottom;"></span>`
         );
     });
 
-    // 2. Build the full HTML
+    const dragDropDialog = document.getElementById('dragDropDialog');
     dragDropDialog.innerHTML = `
-        <p class="drop-sentence">
-            ${formattedSentence}
-        </p>
-        <div class="card-container">
-            ${data.options.map(opt =>
-        `<span class="draggable" draggable="true">${opt}</span>`
-    ).join('')}
+        <p class="drop-sentence" style="line-height: 2.5em;">${formattedSentence}</p>
+        
+        <div id="original-card-container" class="card-container" style="margin-top: 20px; min-height: 60px; border: 1px solid #ccc; padding: 10px; background: #f9f9f9;">
+            ${data.options.map(opt => `<span class="draggable" style="background: #fff; padding: 5px 10px; margin: 5px; cursor: move; border: 1px solid #999; display: inline-block; border-radius: 3px; box-shadow: 1px 1px 2px rgba(0,0,0,0.1);">${opt}</span>`).join('')}
+        </div>
+        
+        <div style="margin-top: 20px; text-align: right;">
+            <button type="button" onclick="resetDragDrop()" style="background: #f0f0f0; border: 1px solid #ccc; padding: 5px 10px; cursor: pointer; margin-right: 10px;">Reset</button>
+            <button type="button" onclick="validateAnswer(${data.id}, 'dragDrop')" style="background: #4CAF50; color: white; border: none; padding: 5px 15px; cursor: pointer;">Check Alignment</button>
         </div>
     `;
+
+    // Re-initialize jQuery UI
+    $(dragDropDialog).find(".draggable").draggable({
+        revert: "invalid",
+        stack: ".draggable",
+        containment: "#dragDropDialog"
+    });
+
+    $(dragDropDialog).find(".droppable").droppable({
+        accept: ".draggable",
+        hoverClass: "ui-state-hover",
+        drop: function (event, ui) {
+            $(this).append(ui.draggable.css({ top: 0, left: 0, position: "relative" }));
+        }
+    });
+
+    // Allow dropping back into the main container
+    $("#original-card-container").droppable({
+        accept: ".draggable",
+        drop: function (event, ui) {
+            $(this).append(ui.draggable.css({ top: 0, left: 0, position: "relative" }));
+        }
+    });
 }
 
+function resetDragDrop() {
+    const container = document.getElementById('original-card-container');
+    const draggables = document.querySelectorAll('#dragDropDialog .draggable');
 
+    draggables.forEach(card => {
+        // Move card back to the starting container
+        container.appendChild(card);
+
+        // Reset jQuery UI positions so they don't look "stuck"
+        $(card).css({
+            top: 0,
+            left: 0,
+            position: "relative"
+        });
+    });
+
+    console.log("Drag & Drop reset performed.");
+}
 function displayDropdown(data) {
     dropdownDialog.innerHTML = `
-        <p>${data.question}</p>
-        <select id="quizSelect">
-            <option value="" disabled selected>Choose an option...</option>
-            ${data.options.map((opt, index) =>
-        `<option value="${index}">${opt}</option>`
-    ).join('')}
+        <p><strong>${data.question}</strong></p>
+        <select id="quizSelect" style="width:100%; margin: 10px 0; padding: 5px;">
+            <option value="" disabled selected>Wähle eine Option...</option>
+            ${data.options.map((opt, index) => `<option value="${index}">${opt}</option>`).join('')}
         </select>
+        <button type="button" onclick="validateAnswer(${data.id}, 'dropdown')">Submit</button>
     `;
 }
 
 function displayFreeText(data) {
     freeTextDialog.innerHTML = `
-      <p>${data.question}</p>
-      <textarea id="freeTextInput" rows="4" cols="50"></textarea><br>
-      <button id="submitFreeText" class="btn-primary">Submit</button>`;
+        <p><strong>${data.question}</strong></p>
+        <textarea id="freeTextInput" rows="4" style="width:100%; margin-bottom:10px;"></textarea><br>
+        <button type="button" onclick="validateAnswer(${data.id}, 'freeText')">Submit</button>
+    `;
 }
 
 
-function loadQuestion(url) {
-    // Replace 'data.json' with the actual path to your file
+function validateAnswer(questionId, type) {
+    let userAnswer;
+
+    if (type === 'singleChoice') {
+        const selected = document.querySelector('input[name="quiz-answer"]:checked');
+        if (!selected) return alert("Bitte wähle eine Option!");
+        userAnswer = parseInt(selected.value);
+    }
+    else if (type === 'multipleChoice') {
+        const checkedBoxes = document.querySelectorAll('input[name="quiz-multi-answer"]:checked');
+        if (checkedBoxes.length === 0) return alert("Wähle mindestens eine Antwort!");
+        userAnswer = Array.from(checkedBoxes).map(cb => parseInt(cb.value));
+    }
+    else if (type === 'dropdown') {
+        const select = document.getElementById('quizSelect');
+        if (!select.value) return alert("Bitte wähle eine Option aus!");
+        userAnswer = parseInt(select.value);
+    }
+    else if (type === 'dragDrop') {
+        userAnswer = {};
+        const dropZones = document.querySelectorAll('#dragDropDialog .droppable');
+        let allFilled = true;
+        dropZones.forEach(zone => {
+            const key = zone.getAttribute('data-ph-key');
+            const val = zone.textContent.trim();
+            if (!val) allFilled = false;
+            userAnswer[key] = val;
+        });
+        if (!allFilled) return alert("Bitte fülle alle Lücken aus!");
+    }
+    else if (type === 'freeText') {
+        const text = document.getElementById('freeTextInput').value;
+        if (!text.trim()) return alert("Bitte gib einen Text ein!");
+        userAnswer = text;
+    }
+
+    // Server-Abfrage
+    fetch('/api/questions/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ QuestionId: questionId, Answer: userAnswer })
+    })
+        .then(res => res.json())
+        .then(result => {
+            if (result.correct) {
+                alert("✅ Richtig!");
+                $(`#${type}Dialog`).dialog("close");
+                handleQuizSuccess();
+            } else {
+                alert("❌ Leider falsch. Versuche es nochmal!");
+            }
+        })
+        .catch(err => console.error("Validation Error:", err));
+}
+
+
+function loadQuestion(questionType) {
+    // We pass the 'type' string (e.g., 'singleChoice') to the API
+    const url = `/api/questions?type=${questionType}`;
+
     fetch(url)
         .then(response => {
             if (!response.ok) {
-                throw new Error('Network response was not ok');
+                // Handle 404 (No question found) or 500 (Server error)
+                return response.json().then(err => { throw new Error(err.error); });
             }
             return response.json();
         })
         .then(data => {
-            // Now 'data' is your JavaScript object
-            switch (data.type) {
-                case "singleChoice": displaySingleChoice(data); break;
-                case "multipleChoice": displayMultipleChoice(data); break;
-                case "dragDrop": displayDragDrop(data); break;
-                case "dropdown": displayDropdown(data); break;
-                case "freeText": displayFreeText(data); break;
-            }
+            // Mapping the API's QuestionDto to your display functions
+            // Note: The controller returns "questionText", so we map it to "question"
+            const formattedData = {
+                id: data.id,
+                type: data.type,
+                question: data.questionText,
+                options: data.options,
+                sentence: data.sentenceTemplate,
+                placeholders: data.placeholders,
+                placeholderText: data.placeholder // for freeText
+            };
 
+            switch (data.type) {
+                case "singleChoice": displaySingleChoice(formattedData); break;
+                case "multipleChoice": displayMultipleChoice(formattedData); break;
+                case "dragDrop": displayDragDrop(formattedData); break;
+                case "dropdown": displayDropdown(formattedData); break;
+                case "freeText": displayFreeText(formattedData); break;
+            }
         })
         .catch(error => {
-            console.error('There was a problem with the fetch operation:', error);
+            console.error('Quiz Error:', error.message);
+            alert("Fehler: " + error.message);
         });
 }
 
 
+// Battle Logic
+function checkForFight() {
+    let battleTriggered = false;
+
+    for (let i = 0; i < myUnits.length; i++) {
+        for (let j = i + 1; j < myUnits.length; j++) {
+            let u1 = myUnits[i];
+            let u2 = myUnits[j];
+
+            let dx = Math.abs(u1.gridX - u2.gridX);
+            let dy = Math.abs(u1.gridY - u2.gridY);
+
+            // Adjacency check (North, South, East, West)
+            if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
+                triggerBattle(u1, u2);
+                battleTriggered = true;
+                return;
+            }
+        }
+    }
+    if (!battleTriggered) toastr.info("Keine Gegner in Reichweite.");
+}
+
+function triggerBattle(unit1, unit2) {
+    fetch('/fragen/battle.json')
+        .then(response => {
+            if (!response.ok) throw new Error("Battle file not found");
+            return response.json();
+        })
+        .then(data => {
+            currentBattleData = data;
+
+            const formattedData = {
+                id: data.Id,
+                type: data.Type,
+                // Using a <div> or <br> to separate the combatants from the question
+                question: `<div style="font-size: 1.2em; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px;">
+                                ⚔️ ${data.Player1} vs ${data.Player2}
+                           </div>
+                           ${data.QuestionText}`,
+                options: data.OptionsJson
+            };
+
+            $("#multipleChoiceDialog").dialog("open");
+            displayMultipleChoice(formattedData);
+            startBattleCountdown(parseInt(data.Duration));
+        })
+        .catch(error => toastr.error("Fehler: " + error.message));
+}
+function startBattleCountdown(seconds) {
+    if (battleTimer) clearInterval(battleTimer);
+
+    const totalTime = seconds;
+    let timeLeft = seconds;
+    const timerBar = document.getElementById('quiz-timer-bar');
+
+    // Initial state: ensure it starts at 100%
+    if (timerBar) {
+        timerBar.style.width = "100%";
+        timerBar.style.backgroundColor = "#4CAF50";
+    }
+
+    battleTimer = setInterval(() => {
+        timeLeft--;
+
+        // Calculate percentage
+        const percentage = Math.max(0, (timeLeft / totalTime) * 100);
+
+        if (timerBar) {
+            timerBar.style.width = percentage + "%";
+
+            // Color feedback
+            if (percentage < 30) {
+                timerBar.style.backgroundColor = "#f44336";
+            } else if (percentage < 60) {
+                timerBar.style.backgroundColor = "#ffeb3b";
+            }
+        }
+
+        $("#multipleChoiceDialog").dialog("option", "title", `Kampf! Zeit: ${timeLeft}s`);
+
+        if (timeLeft <= 0) {
+            clearInterval(battleTimer);
+
+            // Wait 1 second for the CSS transition to reach 0 before closing
+            setTimeout(() => {
+                if ($("#multipleChoiceDialog").dialog("isOpen")) {
+                    alert("⏰ Zeit abgelaufen! Der Kampf wurde verloren.");
+                    $("#multipleChoiceDialog").dialog("close");
+
+                    if (selectedUnit) {
+                        selectedUnit.hp -= 10;
+                        updateInfoPanel();
+                    }
+                }
+            }, 1000);
+        }
+    }, 1000);
+}
+
+// Ensure timer stops if player submits early
+function handleQuizSuccess() {
+    if (battleTimer) clearInterval(battleTimer);
+    // Example: If a unit was waiting to move, execute that move now
+    if (pendingMove) {
+        const { unit, tile, tx, ty } = pendingMove;
+        unit.moveTo(tx, ty);
+        pendingMove = null; // Clear the queue
+        updateInfoPanel();
+    }
+}
+
+/**
+ * Updates the Inventory UI panel to show collected items for each unit.
+ * Uses item icons from assets.sources and formats the item types for display.
+ */
+function listItems() {
+    const inventoryPanel = document.getElementById("ui_inventory");
+    if (!inventoryPanel) return;
+
+    let htmlContent = "";
+
+    myUnits.forEach(u => {
+        // If inventory is empty, show a placeholder message
+        let iconsHtml = (u.inventory && u.inventory.length > 0)
+            ? u.inventory.map(type => `<img src="${assets.sources[type]}" width="20" height="20" style="margin-right:2px;">`).join('')
+            : "<i style='color: #888; font-size: 0.8em;'>No items collected</i>";
+
+        htmlContent += `
+            <div style="margin-bottom: 10px;">
+                <strong>${u.nameKey}:</strong><br>
+                ${iconsHtml}
+            </div>
+        `;
+    });
+
+    inventoryPanel.innerHTML = htmlContent;
+}
 // ============================================
 // NEUE WEBSOCKET-FUNKTIONALITÄT
 // ============================================
@@ -966,16 +1195,31 @@ $("#btnStartGame").click(function () {
 // ANGEPASSTE CANVAS-EVENT-HANDLER (ersetzen die ursprünglichen)
 // ============================================
 canvas.addEventListener("click", function (event) {
-    menu.style.display = "none";
+    if (menu) menu.style.display = "none";
 
     let rect = canvas.getBoundingClientRect();
     let tX = Math.floor((event.clientX - rect.left) / TILE_SIZE);
     let tY = Math.floor((event.clientY - rect.top) / TILE_SIZE);
 
+    // 1. Check if there is a unit at the clicked position
     let unitHit = myUnits.find((u) => u.gridX === tX && u.gridY === tY);
     let targetTile = myTiles[tY] ? myTiles[tY][tX] : null;
 
+    // 2. SELECTION LOGIC: If we clicked a unit, try to select it
+    if (unitHit) {
+        // Multi-player check: only select if it's your unit
+        if (!isMultiplayer || unitHit.playerId === myPlayerId) {
+            selectedUnit = unitHit;
+            // Default to 'move' if no action is set
+            if (!selectedUnit.activeAction) selectedUnit.activeAction = "move";
+            updateInfoPanel();
+            return; // Stop here so we don't accidentally "move" to our own tile
+        }
+    }
+
+    // 3. ACTION LOGIC: If a unit is already selected and we clicked a tile (not a unit)
     if (selectedUnit && selectedUnit.activeAction) {
+        // Multiplayer Socket Logic
         if (isMultiplayer && socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({
                 type: "playerAction",
@@ -984,33 +1228,22 @@ canvas.addEventListener("click", function (event) {
                 targetX: tX,
                 targetY: tY
             }));
-            return;
         } else {
+            // Local Logic
             const action = ACTIONS[selectedUnit.activeAction];
             if (action && action.canExecute(selectedUnit, targetTile, tX, tY)) {
-                action.execute(selectedUnit, targetTile, tX, tY);
+
+                // YOUR QUIZ INTEGRATION (Optional but recommended based on previous steps)
+                if (selectedUnit.activeAction === "move") {
+                    pendingMove = { unit: selectedUnit, tile: targetTile, tx: tX, ty: tY };
+                    loadQuestion('singleChoice');
+                } else {
+                    action.execute(selectedUnit, targetTile, tX, tY);
+                }
                 updateInfoPanel();
             }
         }
-        return;
     }
-
-    if (!isMultiplayer) {
-        if (unitHit) {
-            selectedUnit = unitHit;
-            if (!selectedUnit.activeAction) selectedUnit.activeAction = "move";
-            updateInfoPanel();
-            return;
-        }
-    } else {
-        if (unitHit && unitHit.playerId === myPlayerId) {
-            selectedUnit = unitHit;
-            if (!selectedUnit.activeAction) selectedUnit.activeAction = "move";
-            updateInfoPanel();
-            return;
-        }
-    }
-    updateInfoPanel();
 });
 
 canvas.addEventListener("contextmenu", function (e) {
@@ -1069,6 +1302,8 @@ function onStartGame() {
             myUnits.push(new unit(TILE_SIZE, TILE_SIZE, assets.tiles.PIONEER_GREEN, 28, 28, "GREEN", 3, 3));
         }
 
+        listItems();
+
         setInterval(spawnRandomItem, 3000);
     });
 
@@ -1076,7 +1311,14 @@ function onStartGame() {
     document.getElementById("ui_btn_test").addEventListener("click", () => setAction("test"));
     document.getElementById("ui_btn_move").addEventListener("click", () => setAction("move"));
     document.getElementById("ui_btn_fight").addEventListener("click", () => setAction("attack"));
+    document.getElementById("ui_btn_checkForFight").addEventListener("click", () => checkForFight());
+    document.getElementById("ui_btn_checkForFight").addEventListener("click", () => listItems());
+
+
 }
+
+
+
 
 // Start
 $(document).ready(function () {

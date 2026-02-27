@@ -88,7 +88,7 @@ namespace StrategieGameServer.Controllers
                         isCorrect = CheckMultipleChoice(question, request.Answer);
                         break;
                     case "freeText":
-                        isCorrect = true;
+                        isCorrect = CheckFreeText(question, request.Answer);
                         break;
                     case "dropdown":
                         isCorrect = CheckDropdown(question, request.Answer);
@@ -175,6 +175,24 @@ namespace StrategieGameServer.Controllers
             return correctMapping.All(kv =>
                 userMapping.ContainsKey(kv.Key) && userMapping[kv.Key] == kv.Value
             );
+        }
+
+        private bool CheckFreeText(Question question, JsonElement answer)
+        {
+            if (answer.ValueKind != JsonValueKind.String)
+                throw new ArgumentException("Bei 'freeText' muss die Antwort ein Text-String sein.");
+
+            string userText = answer.GetString()?.ToLower().Trim() ?? "";
+
+            // We store the valid keywords in the 'CorrectAnswerJson' column as a JSON array
+            // Example in DB: ["Pionier", "bewegen", "bauen"]
+            if (string.IsNullOrEmpty(question.CorrectAnswerJson))
+                return true; // Fallback if no keywords are defined
+
+            var requiredKeywords = JsonSerializer.Deserialize<List<string>>(question.CorrectAnswerJson);
+
+            // Logic: The answer is correct if it contains ALL required keywords
+            return requiredKeywords.All(keyword => userText.Contains(keyword.ToLower()));
         }
     }
 
