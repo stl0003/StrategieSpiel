@@ -9,6 +9,10 @@ namespace StrategieGameServer.Controllers
             return View();
         }
 
-        
+        public IActionResult Lobby()
+        {
+            return View();
+        }
+
     }
 }
