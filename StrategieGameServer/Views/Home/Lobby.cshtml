@@ -1,0 +1,148 @@
+﻿@{
+    ViewData["Title"] = "Lobby";
+}
+
+<div class="lobby-wrap">
+    <div class="lobby-title">Game Browser</div>
+
+    <!-- Game list populated by JS -->
+    <section class="game-list" id="gameList"></section>
+
+    <div class="spacer"></div>
+
+    <section class="create-panel">
+        <div class="create-title">Or create your own!</div>
+
+        <!-- Frontend-only: prevent normal form submit -->
+        <form class="create-form" id="createGameForm">
+            <div class="field-row">
+                <label for="gameName">Game name:</label>
+                <input id="gameName" name="gameName" type="text" maxlength="32" />
+            </div>
+
+            <div class="field-row">
+                <label for="maxPlayers">Players:</label>
+                <select id="maxPlayers" name="maxPlayers">
+                    <option>2</option>
+                    <option>3</option>
+                    <option>4</option>
+                    <option>5</option>
+                    <option selected>6</option>
+                    <option>7</option>
+                    <option>8</option>
+                </select>
+            </div>
+
+            <div class="create-actions">
+                <button class="btn-purple" type="submit">Create Game</button>
+            </div>
+        </form>
+    </section>
+</div>
+
+<script>
+    // ----- Storage key for your repo -----
+    const LOBBY_STORAGE_KEY = "lobby.games.v1";
+
+    function randomGameId(len = 5) {
+        const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        let out = "";
+        for (let i = 0; i < len; i++) {
+            out += letters[Math.floor(Math.random() * letters.length)];
+        }
+        return out;
+    }
+
+    function loadGames() {
+        try {
+            const raw = localStorage.getItem(LOBBY_STORAGE_KEY);
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }
+
+    function saveGames(games) {
+        localStorage.setItem(LOBBY_STORAGE_KEY, JSON.stringify(games));
+    }
+
+    function addGame(game) {
+        const games = loadGames();
+
+        // Ensure Game ID is unique in current local list
+        while (games.some(g => g.gameId === game.gameId)) {
+            game.gameId = randomGameId(5);
+            if (!game.gameName || !game.gameName.trim()) game.gameName = game.gameId;
+        }
+
+        games.unshift(game);
+        saveGames(games);
+        renderGames();
+    }
+
+    function renderGames() {
+        const games = loadGames();
+        const host = document.getElementById("gameList");
+
+        if (games.length === 0) {
+            host.innerHTML = `
+                <div class="game-row">
+                    <div class="game-info">
+                        <p class="game-name">No games yet</p>
+                        <p class="game-players">Create one below</p>
+                    </div>
+                    <button class="btn-purple" type="button" disabled>Join Game</button>
+                </div>
+            `;
+            return;
+        }
+
+        host.innerHTML = games.map(g => `
+            <div class="game-row">
+                <div class="game-info">
+                    <p class="game-name">${escapeHtml(g.gameName)}</p>
+                    <p class="game-players">${g.playerCount}/${g.maxPlayers} Players</p>
+                </div>
+                <a class="btn-purple" style="text-decoration:none; display:inline-block;"
+                   href="/Home/Index?gameId=${encodeURIComponent(g.gameId)}">
+                    Join Game
+                </a>
+            </div>
+        `).join("");
+    }
+
+    function escapeHtml(str) {
+        return String(str)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
+    }
+
+    // ----- Create Game wiring -----
+    document.getElementById("createGameForm").addEventListener("submit", (e) => {
+        e.preventDefault();
+            
+        const maxPlayers = parseInt(document.getElementById("maxPlayers").value, 10);
+        const typedName = document.getElementById("gameName").value || "";
+        const gameId = randomGameId(5);
+
+        const game = {
+            gameId: gameId,
+            gameName: typedName.trim() ? typedName.trim() : gameId, // name defaults to ID
+            playerCount: 1,
+            maxPlayers: Number.isFinite(maxPlayers) ? maxPlayers : 6
+        };
+
+        addGame(game);
+
+        // optional: clear input
+        document.getElementById("gameName").value = "";
+    });
+
+    // Initial render
+    renderGames();
+</script>

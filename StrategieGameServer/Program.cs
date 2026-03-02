@@ -51,6 +51,6 @@ app.Map("/ws", async context =>
 
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}");
+    pattern: "{controller=Home}/{action=Lobby}/{id?}");
 
 app.Run();
