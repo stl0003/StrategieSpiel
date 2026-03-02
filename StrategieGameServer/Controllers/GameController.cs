@@ -151,6 +151,45 @@ namespace StrategieGameServer.Controllers
             state.Tiles[ty][tx].HasTrap = true;
         }
 
+        [HttpGet("mapinfo")]
+        public ActionResult<MapInfoDto> GetMapInfo([FromQuery] string? lobbyCode)
+        {
+            var code = lobbyCode ?? "default";
+            if (!_gameStates.TryGetValue(code, out var state))
+                return NotFound(new { error = "Lobby not found" });
+
+            // Spawn alle 3 Sekunden ein neues Item
+            if ((DateTime.UtcNow - state.LastItemSpawnTime).TotalSeconds >= 3)
+            {
+                SpawnRandomItem(state);
+                state.LastItemSpawnTime = DateTime.UtcNow;
+            }
+
+            var dto = new MapInfoDto
+            {
+                Units = state.Units.Select(u => new UnitDto
+                {
+                    Id = u.Id,
+                    PlayerId = u.PlayerId,
+                    NameKey = u.NameKey,
+                    GridX = u.GridX,
+                    GridY = u.GridY,
+                    Hp = u.Hp,
+                    MaxHp = u.MaxHp,
+                    Inventory = u.Inventory
+                }).ToList(),
+                Items = state.Items.Select(i => new ItemDto
+                {
+                    GridX = i.GridX,
+                    GridY = i.GridY,
+                    Type = i.Type
+                }).ToList()
+            };
+
+            return Ok(dto);
+        }
+
+
         private static GameStateDto MapToDto(GameState state)
         {
             var tiles = new TileDto[state.Tiles.Length][];
@@ -193,6 +232,45 @@ namespace StrategieGameServer.Controllers
                 }).ToList(),
                 Buildings = new() // falls du Buildings später brauchst
             };
+
+
+        }
+
+        private static void SpawnRandomItem(GameState state)
+        {
+            const int GRID_SIZE = 30;
+            var rand = new Random();
+            int maxAttempts = 100; // verhindert Endlosschleife
+
+            for (int attempt = 0; attempt < maxAttempts; attempt++)
+            {
+                int tx = rand.Next(GRID_SIZE);
+                int ty = rand.Next(GRID_SIZE);
+                var tile = state.Tiles[ty][tx];
+
+                bool isOccupied = state.Units.Any(u => u.GridX == tx && u.GridY == ty) ||
+                                  state.Items.Any(i => i.GridX == tx && i.GridY == ty);
+
+                if (tile.Type != "WATER" && !isOccupied)
+                {
+                    double r = rand.NextDouble();
+                    string type;
+
+                    if (r < 0.2) type = "HEALTH_PACK";
+                    else if (r < 0.3) type = "BOMB1";
+                    else if (r < 0.4) type = "BOMB2";
+                    else if (r < 0.5) type = "BOMB3";
+                    else if (r < 0.6) type = "BLOP";
+                    else if (r < 0.7) type = "WHITE_BLOP";
+                    else if (r < 0.8) type = "EXPLOSION1";
+                    else if (r < 0.9) type = "EXPLOSION2";
+                    else type = "EXPLOSION3";
+
+                    state.Items.Add(new Item { GridX = tx, GridY = ty, Type = type });
+                    return; // Erfolg
+                }
+            }
+            // Falls kein Platz gefunden – nichts tun
         }
     }
 
@@ -264,6 +342,12 @@ namespace StrategieGameServer.Controllers
         public List<Unit> Units { get; set; } = new();
         public List<Item> Items { get; set; } = new();
         public List<Building> Buildings { get; set; } = new();
+        public DateTime LastItemSpawnTime { get; set; } = DateTime.MinValue; // Neu
+    }
+    public class MapInfoDto
+    {
+        public List<UnitDto> Units { get; set; } = new();
+        public List<ItemDto> Items { get; set; } = new();
     }
 
     public class Tile
