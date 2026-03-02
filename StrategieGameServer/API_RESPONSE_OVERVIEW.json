@@ -1,0 +1,351 @@
+{
+  "document": {
+    "name": "API Response Overview",
+    "purpose": "Single source of truth for current and target JSON payload shapes (REST + WebSocket).",
+    "updatedUtc": "2026-03-02T00:00:00Z"
+  },
+  "now": {
+    "http": {
+      "GET /api/game/state?lobbyCode=ABCD": {
+        "response200": {
+          "tiles": [
+            [
+              { "x": 0, "y": 0, "type": "PLAINS", "explored": false, "hasTrap": false },
+              { "x": 1, "y": 0, "type": "FOREST", "explored": false, "hasTrap": false }
+            ]
+          ],
+          "units": [
+            {
+              "id": 0,
+              "playerId": 0,
+              "nameKey": "RED",
+              "gridX": 1,
+              "gridY": 1,
+              "hp": 100,
+              "maxHp": 100,
+              "inventory": []
+            }
+          ],
+          "items": [
+            { "gridX": 8, "gridY": 4, "type": "HEALTH_PACK" }
+          ],
+          "buildings": []
+        }
+      },
+      "POST /api/game/action?lobbyCode=ABCD": {
+        "request": {
+          "unitId": 0,
+          "action": "move",
+          "targetX": 2,
+          "targetY": 1,
+          "playerId": 0
+        },
+        "response200": {
+          "tiles": [
+            [
+              { "x": 0, "y": 0, "type": "PLAINS", "explored": false, "hasTrap": false },
+              { "x": 1, "y": 0, "type": "FOREST", "explored": true, "hasTrap": false }
+            ]
+          ],
+          "units": [
+            {
+              "id": 0,
+              "playerId": 0,
+              "nameKey": "RED",
+              "gridX": 2,
+              "gridY": 1,
+              "hp": 100,
+              "maxHp": 100,
+              "inventory": []
+            }
+          ],
+          "items": [],
+          "buildings": []
+        },
+        "response400": {
+          "error": "Not adjacent"
+        },
+        "response404": {
+          "error": "Lobby not found"
+        }
+      },
+      "GET /api/game/mapinfo?lobbyCode=ABCD": {
+        "response200": {
+          "units": [
+            {
+              "id": 0,
+              "playerId": 0,
+              "nameKey": "RED",
+              "gridX": 2,
+              "gridY": 1,
+              "hp": 100,
+              "maxHp": 100,
+              "inventory": []
+            },
+            {
+              "id": 1,
+              "playerId": 1,
+              "nameKey": "BLUE",
+              "gridX": 1,
+              "gridY": 28,
+              "hp": 100,
+              "maxHp": 100,
+              "inventory": []
+            }
+          ],
+          "items": [
+            { "gridX": 7, "gridY": 5, "type": "BOMB1" }
+          ]
+        },
+        "response404": {
+          "error": "Lobby not found"
+        }
+      },
+      "POST /api/game/battle/check?lobbyCode=ABCD": {
+        "request": {
+          "unitId1": 0,
+          "unitId2": 1
+        },
+        "response200": {
+          "id": 99,
+          "type": "multipleChoice",
+          "questionText": "⚔️ RED vs BLUE",
+          "options": ["RED", "BLUE"],
+          "duration": 30
+        },
+        "response400": {
+          "error": "Not adjacent"
+        }
+      },
+      "GET /api/questions?type=singleChoice": {
+        "response200": {
+          "id": 11,
+          "type": "singleChoice",
+          "questionText": "What is 2 + 2?",
+          "options": ["3", "4", "5"],
+          "placeholder": null,
+          "sentenceTemplate": null,
+          "placeholders": null,
+          "optionsMapping": null
+        },
+        "response404": {
+          "error": "Keine Frage vom Typ 'singleChoice' gefunden."
+        }
+      },
+      "POST /api/questions/answer": {
+        "requestSingleChoice": {
+          "questionId": 11,
+          "answer": 1
+        },
+        "requestMultipleChoice": {
+          "questionId": 12,
+          "answer": [1, 3]
+        },
+        "requestDragDrop": {
+          "questionId": 13,
+          "answer": {
+            "[A]": "Pionier",
+            "[B]": "bauen"
+          }
+        },
+        "response200": {
+          "correct": true
+        },
+        "response400": {
+          "error": "Bei 'singleChoice' muss die Antwort eine Zahl (Index) sein."
+        }
+      },
+      "GET /api/lobby": {
+        "response200": [
+          {
+            "code": "ABCD",
+            "playerCount": 2,
+            "gameStarted": true
+          }
+        ]
+      },
+      "GET /api/lobby/ABCD": {
+        "response200": {
+          "code": "ABCD",
+          "gameStarted": true,
+          "players": [
+            { "connectionId": "conn-1", "name": "Player 1", "playerId": 0 },
+            { "connectionId": "conn-2", "name": "Player 2", "playerId": 1 }
+          ]
+        },
+        "response404": {}
+      }
+    },
+    "websocket": {
+      "clientToServerExamples": [
+        { "type": "createLobby", "playerName": "Player 1" },
+        { "type": "joinLobby", "lobbyCode": "ABCD", "playerName": "Player 2" },
+        { "type": "startGame", "lobbyCode": "ABCD" },
+        { "type": "playerAction", "unitId": 0, "action": "move", "targetX": 2, "targetY": 1 }
+      ],
+      "serverToClientExamples": [
+        {
+          "type": "lobbyCreated",
+          "lobbyCode": "ABCD",
+          "players": [
+            { "connectionId": "conn-1", "name": "Player 1", "playerId": 0 }
+          ],
+          "yourPlayerId": 0
+        },
+        {
+          "type": "playerJoined",
+          "players": [
+            { "connectionId": "conn-1", "name": "Player 1", "playerId": 0 },
+            { "connectionId": "conn-2", "name": "Player 2", "playerId": 1 }
+          ]
+        },
+        {
+          "type": "gameStarted",
+          "gameModel": {
+            "tiles": [[{ "x": 0, "y": 0, "type": "PLAINS", "explored": false, "hasTrap": false }]],
+            "units": [{ "id": 0, "playerId": 0, "nameKey": "RED", "gridX": 1, "gridY": 1 }],
+            "items": [],
+            "buildings": []
+          }
+        },
+        { "type": "error", "message": "No active game" }
+      ]
+    }
+  },
+  "futureTarget": {
+    "rest": {
+      "GET /api/game/state?lobbyCode=ABCD": {
+        "response200": {
+          "game": {
+            "gameId": "game-8f4c8d",
+            "gameName": "Strategie Match 1",
+            "lobbyCode": "ABCD",
+            "playerCount": 2,
+            "playerMax": 4,
+            "tick": 1287
+          },
+          "map": {
+            "size": { "width": 30, "height": 30 },
+            "tiles": [
+              [{ "x": 0, "y": 0, "type": "PLAINS", "discoveredBy": [0], "hasTrap": false }]
+            ]
+          },
+          "players": [
+            {
+              "playerId": 0,
+              "name": "Player 1",
+              "hp": 100,
+              "units": [{ "unitId": 0, "gridX": 2, "gridY": 1, "actionRange": 1 }],
+              "inventory": ["HEALTH_PACK"]
+            }
+          ],
+          "items": [{ "itemId": "itm-11", "gridX": 7, "gridY": 5, "type": "BOMB1" }],
+          "fight": {
+            "active": false,
+            "questionType": null,
+            "question": null
+          }
+        }
+      },
+      "GET /api/game/mapinfo?lobbyCode=ABCD": {
+        "response200": {
+          "gameId": "game-8f4c8d",
+          "lobbyCode": "ABCD",
+          "serverTimeUtc": "2026-03-02T12:30:41Z",
+          "players": [
+            { "playerId": 0, "unitId": 0, "gridX": 2, "gridY": 1 },
+            { "playerId": 1, "unitId": 1, "gridX": 1, "gridY": 28 }
+          ],
+          "items": [
+            { "itemId": "itm-11", "gridX": 7, "gridY": 5, "type": "BOMB1" }
+          ]
+        }
+      },
+      "POST /api/game/action?lobbyCode=ABCD": {
+        "requestMove": {
+          "unitId": 0,
+          "playerId": 0,
+          "action": "move",
+          "targetX": 2,
+          "targetY": 1
+        },
+        "response200": {
+          "ok": true,
+          "appliedAtTick": 1288,
+          "updated": {
+            "unitId": 0,
+            "gridX": 2,
+            "gridY": 1,
+            "hp": 100,
+            "inventory": []
+          }
+        },
+        "response400": {
+          "ok": false,
+          "errorCode": "INVALID_MOVE",
+          "error": "Not adjacent"
+        }
+      },
+      "POST /api/game/fight/resolve?lobbyCode=ABCD": {
+        "request": {
+          "fightId": "fight-77",
+          "playerId": 0,
+          "answer": [1, 3]
+        },
+        "response200": {
+          "fightId": "fight-77",
+          "questionType": "multipleChoice",
+          "correct": true,
+          "damageApplied": 25,
+          "nextStateTick": 1290
+        },
+        "backendInternalOnly": {
+          "correctAnswer": [1, 3]
+        }
+      },
+      "GET /api/lobby/ABCD": {
+        "response200": {
+          "lobbyCode": "ABCD",
+          "gameName": "Strategie Match 1",
+          "playerCount": 2,
+          "playerMax": 4,
+          "status": "inGame",
+          "players": [
+            { "playerId": 0, "name": "Player 1", "ready": true },
+            { "playerId": 1, "name": "Player 2", "ready": true }
+          ]
+        }
+      }
+    },
+    "frontendDerivedStateExample": {
+      "playerView": {
+        "playerId": 0,
+        "selectedUnitId": 0,
+        "actionRangeTiles": [
+          { "x": 1, "y": 1 },
+          { "x": 2, "y": 1 },
+          { "x": 3, "y": 1 }
+        ],
+        "discoveredTiles": [
+          { "x": 0, "y": 0 },
+          { "x": 1, "y": 0 },
+          { "x": 1, "y": 1 }
+        ]
+      },
+      "renderView": {
+        "items": [
+          { "type": "BOMB1", "gridX": 7, "gridY": 5, "particleEffects": ["pulse", "glow"] }
+        ],
+        "particleEffects": [
+          { "effectId": "fx-1", "type": "damage", "x": 48, "y": 24, "ttlMs": 700 }
+        ]
+      }
+    }
+  },
+  "namingConventions": {
+    "json": "camelCase",
+    "ids": "Use stable keys like gameId, lobbyCode, playerId, unitId, itemId.",
+    "coordinates": "Always send gridX and gridY as integers.",
+    "errors": "Use { error: string } now; move to { ok:false, errorCode, error } in future."
+  }
+}

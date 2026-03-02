@@ -10,6 +10,8 @@ const GRID_SIZE = 30;
 const TILE_SIZE = 24;
 const GAME_STATE_URL = "/api/game/state";
 const MAP_INFO_SYNC_INTERVAL_MS = 500;
+const MAP_INFO_REQUEST_TIMEOUT_MS = 4000;
+const MAP_INFO_WARNING_FAILURE_COUNT = 3;
 
 const myTiles = [];
 let selectedUnit = null;
@@ -19,6 +21,11 @@ let myItems = [];
 let pendingMove = null;
 let mapInfoSyncIntervalId = null;
 let isMapInfoSyncInFlight = false;
+let mapInfoLastSuccessAt = null;
+let mapInfoConsecutiveFailures = 0;
+let mapInfoLastError = null;
+let mapInfoLastRoundTripMs = null;
+let mapInfoHasLoggedInitialSuccess = false;
 
 let hoverTileX = null;
 let hoverTileY = null;
@@ -482,7 +489,7 @@ function unit(width, height, img, gridX, gridY, nameKey, id = 0, playerId = 0) {
 
     this.update = function () {
         let ctx = myGameArea.context;
-        let targetX = this.gridX * TILE_SIZE;
+        let targetX = this.gridX * TILE_SIZEd
         let targetY = this.gridY * TILE_SIZE;
         this.x += (targetX - this.x) * 0.1;
         this.y += (targetY - this.y) * 0.1;
@@ -618,7 +625,7 @@ window.addEventListener("keyup", function (e) {
         let targetTile = myTiles[nextY][nextX];
         let action = ACTIONS.move;
         if (action.canExecute(selectedUnit, targetTile, nextX, nextY)) {
-            action.execute(selectedUnit, targetTile, nextX, nextY);
+            sendGameActionToBackend(selectedUnit, "move", nextX, nextY);
             updateInfoPanel();
         }
     }
@@ -1005,12 +1012,13 @@ function startBattleCountdown(seconds) {
 }
 
 // Ensure timer stops if player submits early
-function handleQuizSuccess() {
+async function handleQuizSuccess() {
     if (battleTimer) clearInterval(battleTimer);
-    // Example: If a unit was waiting to move, execute that move now
+    // If a move is pending, commit it via backend action endpoint.
     if (pendingMove) {
-        const { unit, tile, tx, ty } = pendingMove;
-        unit.moveTo(tx, ty);
+        const { unitId, action, tx, ty } = pendingMove;
+        const unit = myUnits.find(u => u.id === unitId) || selectedUnit;
+        await sendGameActionToBackend(unit, action, tx, ty);
         pendingMove = null; // Clear the queue
         updateInfoPanel();
     }
@@ -1169,6 +1177,12 @@ function getCurrentLobbyCode() {
     return (lobbyCodeText || "").trim();
 }
 
+function buildApiUrlWithLobbyCode(baseUrl) {
+    const lobbyCode = getCurrentLobbyCode();
+    if (!lobbyCode) return baseUrl;
+    return `${baseUrl}?lobbyCode=${encodeURIComponent(lobbyCode)}`;
+}
+
 function toIntOrNull(value) {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
@@ -1188,6 +1202,107 @@ function buildMapInfoPayload() {
             type: i.type
         }))
     };
+}
+
+function validateMapInfoPayload(payload) {
+    if (!payload || typeof payload !== "object") {
+        return { isValid: false, message: "Payload missing." };
+    }
+    if (!Array.isArray(payload.players) || !Array.isArray(payload.items)) {
+        return { isValid: false, message: "Payload must contain players[] and items[] arrays." };
+    }
+
+    const hasInvalidPlayer = payload.players.some(p =>
+        !Number.isInteger(p.gridX) ||
+        !Number.isInteger(p.gridY) ||
+        p.gridX < 0 ||
+        p.gridX >= GRID_SIZE ||
+        p.gridY < 0 ||
+        p.gridY >= GRID_SIZE
+    );
+    if (hasInvalidPlayer) {
+        return { isValid: false, message: "Payload contains invalid player coordinates." };
+    }
+
+    const hasInvalidItem = payload.items.some(i =>
+        !Number.isInteger(i.gridX) ||
+        !Number.isInteger(i.gridY) ||
+        i.gridX < 0 ||
+        i.gridX >= GRID_SIZE ||
+        i.gridY < 0 ||
+        i.gridY >= GRID_SIZE
+    );
+    if (hasInvalidItem) {
+        return { isValid: false, message: "Payload contains invalid item coordinates." };
+    }
+
+    return { isValid: true, message: "" };
+}
+
+function validateMapInfoResponse(responseJson) {
+    if (!responseJson || typeof responseJson !== "object") {
+        return { isValid: false, message: "Response is not an object." };
+    }
+
+    const mapInfo = (responseJson.mapInfo && typeof responseJson.mapInfo === "object")
+        ? responseJson.mapInfo
+        : responseJson;
+
+    const hasPlayers = Array.isArray(mapInfo.players) || Array.isArray(mapInfo.units);
+    const hasItems = Array.isArray(mapInfo.items);
+    if (!hasPlayers && !hasItems) {
+        return { isValid: false, message: "Response has no players/units/items arrays." };
+    }
+
+    return { isValid: true, message: "" };
+}
+
+async function sendGameActionToBackend(unit, action, targetX, targetY) {
+    if (!unit) return false;
+
+    const url = buildApiUrlWithLobbyCode("/api/game/action");
+    const payload = {
+        unitId: unit.id,
+        action: action,
+        targetX: targetX,
+        targetY: targetY
+    };
+
+    if (myPlayerId !== null && myPlayerId !== undefined) {
+        payload.playerId = myPlayerId;
+    }
+
+    try {
+        console.log("[ACTION][SEND]", { url: url, payload: payload });
+
+        const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            let backendMessage = `HTTP ${response.status}`;
+            try {
+                const errorBody = await response.json();
+                if (errorBody && errorBody.error) backendMessage = errorBody.error;
+            } catch {
+                // Use default status text when error body is not JSON.
+            }
+            throw new Error(backendMessage);
+        }
+
+        const gameState = await response.json();
+        if (gameState && Array.isArray(gameState.tiles) && Array.isArray(gameState.units)) {
+            updateLocalGameModel(gameState);
+            return true;
+        }
+
+        throw new Error("Invalid /api/game/action response");
+    } catch (error) {
+        console.error("[ACTION] Backend action failed.", error);
+        return false;
+    }
 }
 
 function applyMapInfoResponse(mapInfoResponse) {
@@ -1240,17 +1355,31 @@ function applyMapInfoResponse(mapInfoResponse) {
 }
 
 async function syncMapInfoWithBackend() {
-    const lobbyCode = getCurrentLobbyCode();
-    if (!lobbyCode || isMapInfoSyncInFlight) return;
+    if (isMapInfoSyncInFlight) return;
 
     isMapInfoSyncInFlight = true;
-    const url = `/api/game/mapinfo?lobbyCode=${encodeURIComponent(lobbyCode)}`;
+    const url = buildApiUrlWithLobbyCode("/api/game/mapinfo");
+    const payload = buildMapInfoPayload();
+    const payloadCheck = validateMapInfoPayload(payload);
+    if (!payloadCheck.isValid) {
+        console.warn("[MAPINFO] Lokaler Snapshot hat ungueltige Werte.", payloadCheck.message);
+    }
+
+    const startedAt = Date.now();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), MAP_INFO_REQUEST_TIMEOUT_MS);
 
     try {
+        console.log("[MAPINFO][SEND]", {
+            url: url,
+            lobbyCode: getCurrentLobbyCode() || "default",
+            localSnapshot: payload
+        });
+
         const response = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(buildMapInfoPayload())
+            method: "GET",
+            cache: "no-store",
+            signal: controller.signal
         });
 
         if (!response.ok) {
@@ -1266,22 +1395,51 @@ async function syncMapInfoWithBackend() {
             throw new Error(backendMessage);
         }
 
-        if (response.status === 204) return;
+        if (response.status !== 204) {
+            const responseText = await response.text();
+            if (responseText) {
+                const responseJson = JSON.parse(responseText);
+                const responseCheck = validateMapInfoResponse(responseJson);
+                if (!responseCheck.isValid) {
+                    throw new Error(`Invalid mapinfo response: ${responseCheck.message}`);
+                }
+                applyMapInfoResponse(responseJson);
+            }
+        }
 
-        const responseText = await response.text();
-        if (!responseText) return;
+        mapInfoLastRoundTripMs = Date.now() - startedAt;
+        mapInfoLastSuccessAt = Date.now();
+        mapInfoLastError = null;
 
-        const responseJson = JSON.parse(responseText);
-        applyMapInfoResponse(responseJson);
+        if (mapInfoConsecutiveFailures > 0) {
+            console.info(`[MAPINFO] Kommunikation wiederhergestellt nach ${mapInfoConsecutiveFailures} Fehlern.`);
+        } else if (!mapInfoHasLoggedInitialSuccess) {
+            console.info("[MAPINFO] Endpoint-Kommunikation aktiv.");
+            mapInfoHasLoggedInitialSuccess = true;
+        }
+        mapInfoConsecutiveFailures = 0;
     } catch (error) {
-        console.error("[MAPINFO] Sync fehlgeschlagen.", error);
+        mapInfoConsecutiveFailures++;
+        const isTimeout = error?.name === "AbortError";
+        mapInfoLastError = isTimeout
+            ? `Timeout nach ${MAP_INFO_REQUEST_TIMEOUT_MS}ms`
+            : (error?.message || String(error));
+
+        console.error(`[MAPINFO] Sync fehlgeschlagen (x${mapInfoConsecutiveFailures}).`, mapInfoLastError);
+
+        if (mapInfoConsecutiveFailures === MAP_INFO_WARNING_FAILURE_COUNT && typeof toastr !== "undefined") {
+            toastr.warning("Backend-Sync instabil: Mehrere MapInfo-Requests fehlgeschlagen.");
+        }
     } finally {
+        clearTimeout(timeoutId);
         isMapInfoSyncInFlight = false;
     }
 }
 
 function startMapInfoSyncLoop() {
     if (mapInfoSyncIntervalId) return;
+    mapInfoConsecutiveFailures = 0;
+    mapInfoLastError = null;
     mapInfoSyncIntervalId = setInterval(syncMapInfoWithBackend, MAP_INFO_SYNC_INTERVAL_MS);
 }
 
@@ -1289,6 +1447,26 @@ function stopMapInfoSyncLoop() {
     if (!mapInfoSyncIntervalId) return;
     clearInterval(mapInfoSyncIntervalId);
     mapInfoSyncIntervalId = null;
+    isMapInfoSyncInFlight = false;
+}
+
+window.getMapInfoSyncStatus = function () {
+    const now = Date.now();
+    const msSinceSuccess = mapInfoLastSuccessAt ? now - mapInfoLastSuccessAt : null;
+
+    return {
+        enabled: Boolean(mapInfoSyncIntervalId),
+        inFlight: isMapInfoSyncInFlight,
+        intervalMs: MAP_INFO_SYNC_INTERVAL_MS,
+        timeoutMs: MAP_INFO_REQUEST_TIMEOUT_MS,
+        lastSuccessAt: mapInfoLastSuccessAt,
+        msSinceLastSuccess: msSinceSuccess,
+        consecutiveFailures: mapInfoConsecutiveFailures,
+        lastError: mapInfoLastError,
+        lastRoundTripMs: mapInfoLastRoundTripMs,
+        lobbyCode: getCurrentLobbyCode(),
+        mapInfoUrl: buildApiUrlWithLobbyCode("/api/game/mapinfo")
+    };
 }
 
 // Lobby-UI
@@ -1384,10 +1562,10 @@ canvas.addEventListener("click", function (event) {
 
                 // YOUR QUIZ INTEGRATION (Optional but recommended based on previous steps)
                 if (selectedUnit.activeAction === "move") {
-                    pendingMove = { unit: selectedUnit, tile: targetTile, tx: tX, ty: tY };
+                    pendingMove = { unitId: selectedUnit.id, action: "move", tx: tX, ty: tY };
                     loadQuestion('singleChoice');
                 } else {
-                    action.execute(selectedUnit, targetTile, tX, tY);
+                    sendGameActionToBackend(selectedUnit, selectedUnit.activeAction, tX, tY);
                 }
                 updateInfoPanel();
             }
@@ -1433,9 +1611,11 @@ function buildTileComponent(x, y, terrainKey, explored = false, hasTrap = false)
 }
 
 async function tryLoadMapJsonArray() {
+    const url = buildApiUrlWithLobbyCode(GAME_STATE_URL);
+
     try {
         const responseData = await $.ajax({
-            url: GAME_STATE_URL,
+            url: url,
             method: "GET",
             dataType: "json",
             cache: false
@@ -1462,7 +1642,7 @@ async function tryLoadMapJsonArray() {
         return mapData;
     } catch (error) {
         const backendMessage = error?.responseJSON?.error || error?.statusText || error?.message || error;
-        console.error(`[MAP] Konnte Map nicht vom Backend laden (${GAME_STATE_URL}). Frontend-Map-Start abgebrochen.`, backendMessage);
+        console.error(`[MAP] Konnte Map nicht vom Backend laden (${url}). Frontend-Map-Start abgebrochen.`, backendMessage);
         return null;
     }
 }
@@ -1488,13 +1668,14 @@ function onStartGame() {
     rebuildContextMenu();
 
     assets.loadAll(async () => {
+        const stateUrl = buildApiUrlWithLobbyCode(GAME_STATE_URL);
         const loadedMapJsonArray = await tryLoadMapJsonArray();
         if (!loadedMapJsonArray) {
-            alert(`Map konnte nicht vom Backend geladen werden (${GAME_STATE_URL}).`);
+            alert(`Map konnte nicht vom Backend geladen werden (${stateUrl}).`);
             return;
         }
         applyMapJsonArray(loadedMapJsonArray);
-        console.log(`[MAP] Map vom Backend (${GAME_STATE_URL}) geladen.`);
+        console.log(`[MAP] Map vom Backend (${stateUrl}) geladen.`);
 
         myGameArea.start();
         startMapInfoSyncLoop();

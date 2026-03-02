@@ -79,15 +79,39 @@ Expected: HTTP 200 and either:
    ```text
    /api/game/mapinfo?lobbyCode=<code>
    ```
-4. Confirm request method is `POST` and body contains:
-   - `players` with unit/player positions (`gridX`, `gridY`)
-   - `items` with item positions/types
-5. Move a unit and confirm the next request body contains updated coordinates.
-6. If backend responds with `players/items`, confirm local state updates:
+4. Confirm request method is `GET` (current backend contract).
+5. Move a unit and confirm next polls still succeed and response updates are applied.
+6. If backend responds with `units/items`, confirm local state updates:
    ```javascript
    myUnits.map(u => ({ playerId: u.playerId, x: u.gridX, y: u.gridY }))
    myItems.map(i => ({ type: i.type, x: i.gridX, y: i.gridY }))
    ```
+7. Check local snapshot logging in Console:
+   - Look for `[MAPINFO][SEND]` and inspect `localSnapshot`.
+8. Check sync health state in Console:
+   ```javascript
+   getMapInfoSyncStatus()
+   ```
+   Expected:
+   - `enabled: true`
+   - `inFlight` toggles while requests run
+   - `consecutiveFailures` returns to `0` on success
+   - `msSinceLastSuccess` stays low during normal operation
+
+## Movement -> Backend Action Test (`/api/game/action`)
+1. Open DevTools -> `Network` and filter for `action`.
+2. Move a unit via click action (`Move`) or keyboard (`W/A/S/D`).
+3. Confirm frontend sends:
+   ```text
+   POST /api/game/action?lobbyCode=<code>
+   ```
+4. Confirm request body contains:
+   - `unitId`
+   - `action: "move"`
+   - `targetX`, `targetY`
+   - optional `playerId`
+5. Confirm response is `200` with updated `tiles/units/items`.
+6. Verify unit position remains stable (no rubberband back) while mapinfo polling continues.
 
 ## Regression Checks
 - Unit movement and trap placement still work after startup.
