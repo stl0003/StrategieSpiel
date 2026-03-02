@@ -3,12 +3,15 @@
 ## Scope
 This guide covers:
 1. Baseline local validation for the game server and frontend.
-2. Tests for map loading from `wwwroot/map.json` in `wwwroot/js/game.js`.
-3. Tests for map serialization (`myTiles` -> `generatedMapJsonArray` + console log).
+2. Tests for map loading from backend endpoint `/api/game/state` in `wwwroot/js/game.js`.
+3. Validation that the loaded JSON is applied to runtime tiles (`myTiles`).
 
 ## Prerequisites
 - .NET SDK compatible with project target (`net10.0`).
 - A modern browser with DevTools (Chrome/Edge).
+- Backend map source configured for `GET /api/game/state`:
+  - `GameState:MapFilePath`, or
+  - environment variable `GAME_MAP_JSON_PATH`.
 
 ## Local Smoke Test
 1. Restore and build:
@@ -23,59 +26,52 @@ This guide covers:
 3. Open the app (default route is `Home/Lobby`).
 4. Verify page assets load (tiles, JS, CSS) and no blocking startup errors appear in terminal.
 
-## Map Loading Test (`/map.json`)
+## Map Loading Test (`/api/game/state`)
 1. Open browser DevTools Console.
 2. Reload the page to trigger `onStartGame()`.
 3. Confirm this log appears exactly once per page load:
    ```text
-   [MAP] Map aus /map.json geladen und als JSON-Array gespeichert:
+   [MAP] Map vom Backend (/api/game/state) geladen.
    ```
-4. If `map.json` is missing/invalid, confirm fallback warning appears:
+4. If backend map is missing/invalid, confirm error appears:
    ```text
-   [MAP] Konnte /map.json nicht laden. Fallback auf Zufallsmap.
+   [MAP] Konnte Map nicht vom Backend laden (/api/game/state). Frontend-Map-Start abgebrochen.
    ```
-5. In fallback case, confirm this log appears:
-   ```text
-   [MAP] Zufallsmap erstellt und als JSON-Array gespeichert:
-   ```
+5. In this error case, no map should be generated on the frontend.
 
-## Map Serialization Test
+## Applied Map Validation
 1. Validate structure in Console:
    ```javascript
-   generatedMapJsonArray.length === 30
-   generatedMapJsonArray.every(r => r.length === 30)
-   generatedMapJsonArray[0][0] // expects: { x, y, type, explored, hasTrap }
+   myTiles.length === 30
+   myTiles.every(r => r.length === 30)
+   myTiles[0][0] // expects tile object with .type / .explored / .hasTrap
    ```
 2. Validate values:
-   - `x` and `y` match tile coordinates.
-   - `type` is one of `PLAINS|FOREST|MOUNTAIN|WATER`.
-   - `explored` and `hasTrap` are booleans.
+   - `myTiles[0][0].type` is one of `PLAINS|FOREST|MOUNTAIN|WATER`.
+   - `myTiles[0][0].explored` and `myTiles[0][0].hasTrap` are booleans.
 
 ## Where to Find the JSON
 - Location: Browser DevTools -> `Console` tab.
 - Source 1: Startup log entry:
   ```text
-  [MAP] Map aus /map.json geladen und als JSON-Array gespeichert:
+  [MAP] Map vom Backend (/api/game/state) geladen.
   ```
-  Expand the logged array object to inspect tile rows and entries.
-- Source 2: Runtime variable in Console:
+  Request payload is fetched from backend and applied into `myTiles`.
+- Source 2: Inspect loaded runtime tiles:
   ```javascript
-  generatedMapJsonArray
+  myTiles
   ```
-- To copy a transport-ready JSON string:
-  ```javascript
-  copy(JSON.stringify(generatedMapJsonArray))
-  ```
-- Important: In the current implementation this JSON is kept in memory (JS runtime) and logged to Console; it is not automatically persisted to Local Storage.
 
-## Backend Handoff Readiness Check
-Use this in Console to verify payload is serializable for API/WebSocket transfer:
-```javascript
-const payload = JSON.stringify(generatedMapJsonArray);
-payload.length > 0
+## Backend Endpoint Check
+Use this endpoint directly to validate backend delivery:
+```text
+GET /api/game/state
 ```
-Expected: no serialization errors and non-empty payload string.
+Expected: HTTP 200 and either:
+- a 30x30 tile array directly, or
+- a state object containing `tiles` (or `gameModel.tiles` / `gameState.tiles`).
 
 ## Regression Checks
 - Unit movement, trap placement, and item spawn still work after startup.
 - Multiplayer start/game update flows still run without JS errors.
+- Frontend does not generate random terrain anymore; map source is backend (`/api/game/state`) only.

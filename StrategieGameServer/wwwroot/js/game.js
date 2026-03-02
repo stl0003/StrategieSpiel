@@ -8,9 +8,9 @@ let menu = document.getElementById("contextMenu");
 
 const GRID_SIZE = 30;
 const TILE_SIZE = 24;
+const GAME_STATE_URL = "/api/game/state";
 
 const myTiles = [];
-let generatedMapJsonArray = [];
 let selectedUnit = null;
 let myUnits = [];
 let myBuildings = [];
@@ -273,6 +273,7 @@ function setAction(type) {
 
 var myGameArea = {
     start: function () {
+        if (this.interval) clearInterval(this.interval);
         this.context = canvas.getContext("2d");
         this.interval = setInterval(updateGameArea, 20);
         this.context.imageSmoothingEnabled = false;
@@ -321,6 +322,7 @@ if (uiBtnBuild) {
 function updateGameArea() {
     myGameArea.clear();
     let ctx = myGameArea.context;
+    if (!myTiles.length || !myTiles[0]) return;
 
     for (let y = 0; y < GRID_SIZE; y++) {
         for (let x = 0; x < GRID_SIZE; x++) {
@@ -1105,12 +1107,25 @@ function updatePlayerList(players) {
 function updateLocalGameModel(serverModel) {
     // Tiles aktualisieren
     for (let y = 0; y < GRID_SIZE; y++) {
+        if (!myTiles[y]) myTiles[y] = [];
         for (let x = 0; x < GRID_SIZE; x++) {
-            const tile = myTiles[y][x];
             const serverTile = serverModel.tiles[y][x];
-            tile.type = serverTile.type;
-            tile.explored = serverTile.explored;
-            tile.hasTrap = serverTile.hasTrap;
+            if (!myTiles[y][x]) {
+                myTiles[y][x] = buildTileComponent(
+                    x,
+                    y,
+                    (serverTile.type || "PLAINS").toUpperCase(),
+                    serverTile.explored,
+                    serverTile.hasTrap
+                );
+                continue;
+            }
+
+            const tile = myTiles[y][x];
+            tile.type = (serverTile.type || "PLAINS").toUpperCase();
+            tile.image = assets.tiles[tile.type] || assets.tiles.PLAINS;
+            tile.explored = Boolean(serverTile.explored);
+            tile.hasTrap = Boolean(serverTile.hasTrap);
         }
     }
 
@@ -1284,45 +1299,37 @@ function buildTileComponent(x, y, terrainKey, explored = false, hasTrap = false)
     return tile;
 }
 
-function createRandomMapJsonArray() {
-    return Array.from({ length: GRID_SIZE }, (_, y) =>
-        Array.from({ length: GRID_SIZE }, (_, x) => {
-            let rand = Math.random();
-            let terrainKey = "PLAINS";
-            if (rand < 0.1) terrainKey = "MOUNTAIN";
-            else if (rand < 0.2) terrainKey = "WATER";
-            else if (rand < 0.4) terrainKey = "FOREST";
-
-            return {
-                x: x,
-                y: y,
-                type: terrainKey,
-                explored: false,
-                hasTrap: false
-            };
-        })
-    );
-}
-
 async function tryLoadMapJsonArray() {
     try {
-        const response = await fetch("/map.json", { cache: "no-store" });
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
+        const responseData = await $.ajax({
+            url: GAME_STATE_URL,
+            method: "GET",
+            dataType: "json",
+            cache: false
+        });
 
-        const mapData = await response.json();
+        const mapData = Array.isArray(responseData)
+            ? responseData
+            : Array.isArray(responseData?.tiles)
+                ? responseData.tiles
+                : Array.isArray(responseData?.gameModel?.tiles)
+                    ? responseData.gameModel.tiles
+                    : Array.isArray(responseData?.gameState?.tiles)
+                        ? responseData.gameState.tiles
+                        : null;
+
         if (
             !Array.isArray(mapData) ||
             mapData.length !== GRID_SIZE ||
             mapData.some(row => !Array.isArray(row) || row.length !== GRID_SIZE)
         ) {
-            throw new Error("Invalid map dimensions");
+            throw new Error("Invalid game state response: tiles missing or invalid dimensions");
         }
 
         return mapData;
     } catch (error) {
-        console.warn("[MAP] Konnte /map.json nicht laden. Fallback auf Zufallsmap.", error);
+        const backendMessage = error?.responseJSON?.error || error?.statusText || error?.message || error;
+        console.error(`[MAP] Konnte Map nicht vom Backend laden (${GAME_STATE_URL}). Frontend-Map-Start abgebrochen.`, backendMessage);
         return null;
     }
 }
@@ -1344,35 +1351,19 @@ function applyMapJsonArray(mapJsonArray) {
     }
 }
 
-function exportCurrentMapToJsonArray() {
-    return myTiles.map((row, y) =>
-        row.map((tile, x) => ({
-            x: x,
-            y: y,
-            type: tile.type,
-            explored: tile.explored,
-            hasTrap: tile.hasTrap
-        }))
-    );
-}
-
 function onStartGame() {
     rebuildContextMenu();
 
     assets.loadAll(async () => {
-        myGameArea.start();
-
         const loadedMapJsonArray = await tryLoadMapJsonArray();
-        if (loadedMapJsonArray) {
-            applyMapJsonArray(loadedMapJsonArray);
-            generatedMapJsonArray = exportCurrentMapToJsonArray();
-            console.log("[MAP] Map aus /map.json geladen und als JSON-Array gespeichert:", generatedMapJsonArray);
-        } else {
-            const randomMapJsonArray = createRandomMapJsonArray();
-            applyMapJsonArray(randomMapJsonArray);
-            generatedMapJsonArray = exportCurrentMapToJsonArray();
-            console.log("[MAP] Zufallsmap erstellt und als JSON-Array gespeichert:", generatedMapJsonArray);
+        if (!loadedMapJsonArray) {
+            alert(`Map konnte nicht vom Backend geladen werden (${GAME_STATE_URL}).`);
+            return;
         }
+        applyMapJsonArray(loadedMapJsonArray);
+        console.log(`[MAP] Map vom Backend (${GAME_STATE_URL}) geladen.`);
+
+        myGameArea.start();
 
         if (!isMultiplayer) {
             myUnits.push(new unit(TILE_SIZE, TILE_SIZE, assets.tiles.PIONEER_RED, 1, 1, "RED", 0, 0));
