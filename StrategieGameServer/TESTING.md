@@ -5,6 +5,7 @@ This guide covers:
 1. Baseline local validation for the game server and frontend.
 2. Tests for map loading from backend endpoint `/api/game/state` in `wwwroot/js/game.js`.
 3. Validation that the loaded JSON is applied to runtime tiles (`myTiles`).
+4. Validation of 500ms map info sync (`/api/game/mapinfo`) for unit/item positions.
 
 ## Prerequisites
 - .NET SDK compatible with project target (`net10.0`).
@@ -71,7 +72,24 @@ Expected: HTTP 200 and either:
 - a 30x30 tile array directly, or
 - a state object containing `tiles` (or `gameModel.tiles` / `gameState.tiles`).
 
+## MapInfo Sync Test (`/api/game/mapinfo`)
+1. Join or create a lobby so `lobbyCode` is present.
+2. Open DevTools -> `Network` and filter for `mapinfo`.
+3. Confirm requests are sent every ~500ms to:
+   ```text
+   /api/game/mapinfo?lobbyCode=<code>
+   ```
+4. Confirm request method is `POST` and body contains:
+   - `players` with unit/player positions (`gridX`, `gridY`)
+   - `items` with item positions/types
+5. Move a unit and confirm the next request body contains updated coordinates.
+6. If backend responds with `players/items`, confirm local state updates:
+   ```javascript
+   myUnits.map(u => ({ playerId: u.playerId, x: u.gridX, y: u.gridY }))
+   myItems.map(i => ({ type: i.type, x: i.gridX, y: i.gridY }))
+   ```
+
 ## Regression Checks
-- Unit movement, trap placement, and item spawn still work after startup.
+- Unit movement and trap placement still work after startup.
 - Multiplayer start/game update flows still run without JS errors.
 - Frontend does not generate random terrain anymore; map source is backend (`/api/game/state`) only.

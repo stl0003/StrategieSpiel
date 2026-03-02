@@ -9,12 +9,16 @@ let menu = document.getElementById("contextMenu");
 const GRID_SIZE = 30;
 const TILE_SIZE = 24;
 const GAME_STATE_URL = "/api/game/state";
+const MAP_INFO_SYNC_INTERVAL_MS = 500;
 
 const myTiles = [];
 let selectedUnit = null;
 let myUnits = [];
 let myBuildings = [];
 let myItems = [];
+let pendingMove = null;
+let mapInfoSyncIntervalId = null;
+let isMapInfoSyncInFlight = false;
 
 let hoverTileX = null;
 let hoverTileY = null;
@@ -1063,6 +1067,7 @@ function connectWebSocket() {
         console.log("WebSocket geschlossen");
         isMultiplayer = false;
         myPlayerId = null;
+        stopMapInfoSyncLoop();
     };
 }
 
@@ -1074,6 +1079,7 @@ function handleServerMessage(msg) {
             updatePlayerList(msg.players);
             isMultiplayer = true;
             myPlayerId = msg.yourPlayerId;
+            syncMapInfoWithBackend();
             break;
         case "playerJoined":
             console.log("Spieler beigetreten:", msg.players);
@@ -1156,6 +1162,133 @@ function updateLocalGameModel(serverModel) {
             return null;
         }).filter(b => b !== null);
     }
+}
+
+function getCurrentLobbyCode() {
+    const lobbyCodeText = $("#lobbyCodeDisplay").text();
+    return (lobbyCodeText || "").trim();
+}
+
+function toIntOrNull(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+}
+
+function buildMapInfoPayload() {
+    return {
+        players: myUnits.map(u => ({
+            unitId: u.id,
+            playerId: u.playerId,
+            gridX: u.gridX,
+            gridY: u.gridY
+        })),
+        items: myItems.map(i => ({
+            gridX: i.gridX,
+            gridY: i.gridY,
+            type: i.type
+        }))
+    };
+}
+
+function applyMapInfoResponse(mapInfoResponse) {
+    if (!mapInfoResponse || typeof mapInfoResponse !== "object") return;
+
+    const mapInfo = (mapInfoResponse.mapInfo && typeof mapInfoResponse.mapInfo === "object")
+        ? mapInfoResponse.mapInfo
+        : mapInfoResponse;
+
+    const players = Array.isArray(mapInfo.players)
+        ? mapInfo.players
+        : (Array.isArray(mapInfo.units) ? mapInfo.units : []);
+
+    players.forEach(player => {
+        const gridX = toIntOrNull(player.gridX ?? player.x);
+        const gridY = toIntOrNull(player.gridY ?? player.y);
+        if (gridX === null || gridY === null) return;
+
+        const unitId = toIntOrNull(player.unitId);
+        const playerId = toIntOrNull(player.playerId ?? player.id);
+
+        let targetUnit = null;
+        if (unitId !== null) {
+            targetUnit = myUnits.find(u => u.id === unitId) || null;
+        }
+        if (!targetUnit && playerId !== null) {
+            targetUnit = myUnits.find(u => u.playerId === playerId) || null;
+        }
+
+        if (targetUnit) {
+            targetUnit.moveTo(gridX, gridY);
+        }
+    });
+
+    if (Array.isArray(mapInfo.items)) {
+        const normalizedItems = mapInfo.items
+            .map(item => {
+                const gridX = toIntOrNull(item.gridX ?? item.x);
+                const gridY = toIntOrNull(item.gridY ?? item.y);
+                if (gridX === null || gridY === null) return null;
+
+                const rawType = typeof item.type === "string" ? item.type.toUpperCase() : "HEALTH_PACK";
+                const itemType = assets.tiles[rawType] ? rawType : "HEALTH_PACK";
+                return new Item(gridX, gridY, itemType);
+            })
+            .filter(item => item !== null);
+
+        myItems = normalizedItems;
+    }
+}
+
+async function syncMapInfoWithBackend() {
+    const lobbyCode = getCurrentLobbyCode();
+    if (!lobbyCode || isMapInfoSyncInFlight) return;
+
+    isMapInfoSyncInFlight = true;
+    const url = `/api/game/mapinfo?lobbyCode=${encodeURIComponent(lobbyCode)}`;
+
+    try {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(buildMapInfoPayload())
+        });
+
+        if (!response.ok) {
+            let backendMessage = `HTTP ${response.status}`;
+            try {
+                const errorBody = await response.json();
+                if (errorBody && errorBody.error) {
+                    backendMessage = errorBody.error;
+                }
+            } catch {
+                // Keep default status message when body is not JSON.
+            }
+            throw new Error(backendMessage);
+        }
+
+        if (response.status === 204) return;
+
+        const responseText = await response.text();
+        if (!responseText) return;
+
+        const responseJson = JSON.parse(responseText);
+        applyMapInfoResponse(responseJson);
+    } catch (error) {
+        console.error("[MAPINFO] Sync fehlgeschlagen.", error);
+    } finally {
+        isMapInfoSyncInFlight = false;
+    }
+}
+
+function startMapInfoSyncLoop() {
+    if (mapInfoSyncIntervalId) return;
+    mapInfoSyncIntervalId = setInterval(syncMapInfoWithBackend, MAP_INFO_SYNC_INTERVAL_MS);
+}
+
+function stopMapInfoSyncLoop() {
+    if (!mapInfoSyncIntervalId) return;
+    clearInterval(mapInfoSyncIntervalId);
+    mapInfoSyncIntervalId = null;
 }
 
 // Lobby-UI
@@ -1364,6 +1497,8 @@ function onStartGame() {
         console.log(`[MAP] Map vom Backend (${GAME_STATE_URL}) geladen.`);
 
         myGameArea.start();
+        startMapInfoSyncLoop();
+        syncMapInfoWithBackend();
 
         if (!isMultiplayer) {
             myUnits.push(new unit(TILE_SIZE, TILE_SIZE, assets.tiles.PIONEER_RED, 1, 1, "RED", 0, 0));
@@ -1373,8 +1508,6 @@ function onStartGame() {
         }
 
         listItems();
-
-        setInterval(spawnRandomItem, 3000);
     });
 
     document.getElementById("ui_btn_build").addEventListener("click", () => setAction("placeTrap"));
