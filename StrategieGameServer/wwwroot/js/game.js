@@ -1269,45 +1269,110 @@ canvas.addEventListener("contextmenu", function (e) {
 // ============================================
 // INITIALISIERUNG (angepasst)
 // ============================================
+function buildTileComponent(x, y, terrainKey, explored = false, hasTrap = false) {
+    const normalizedTerrain = assets.tiles[terrainKey] ? terrainKey : "PLAINS";
+    const tile = new component(
+        TILE_SIZE,
+        TILE_SIZE,
+        assets.tiles[normalizedTerrain],
+        x * TILE_SIZE,
+        y * TILE_SIZE
+    );
+    tile.type = normalizedTerrain;
+    tile.explored = Boolean(explored);
+    tile.hasTrap = Boolean(hasTrap);
+    return tile;
+}
+
+function createRandomMapJsonArray() {
+    return Array.from({ length: GRID_SIZE }, (_, y) =>
+        Array.from({ length: GRID_SIZE }, (_, x) => {
+            let rand = Math.random();
+            let terrainKey = "PLAINS";
+            if (rand < 0.1) terrainKey = "MOUNTAIN";
+            else if (rand < 0.2) terrainKey = "WATER";
+            else if (rand < 0.4) terrainKey = "FOREST";
+
+            return {
+                x: x,
+                y: y,
+                type: terrainKey,
+                explored: false,
+                hasTrap: false
+            };
+        })
+    );
+}
+
+async function tryLoadMapJsonArray() {
+    try {
+        const response = await fetch("/map.json", { cache: "no-store" });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const mapData = await response.json();
+        if (
+            !Array.isArray(mapData) ||
+            mapData.length !== GRID_SIZE ||
+            mapData.some(row => !Array.isArray(row) || row.length !== GRID_SIZE)
+        ) {
+            throw new Error("Invalid map dimensions");
+        }
+
+        return mapData;
+    } catch (error) {
+        console.warn("[MAP] Konnte /map.json nicht laden. Fallback auf Zufallsmap.", error);
+        return null;
+    }
+}
+
+function applyMapJsonArray(mapJsonArray) {
+    for (let y = 0; y < GRID_SIZE; y++) {
+        myTiles[y] = [];
+        for (let x = 0; x < GRID_SIZE; x++) {
+            const mapTile = mapJsonArray[y][x] || {};
+            const terrainKey = (mapTile.type || "PLAINS").toUpperCase();
+            myTiles[y][x] = buildTileComponent(
+                x,
+                y,
+                terrainKey,
+                mapTile.explored,
+                mapTile.hasTrap
+            );
+        }
+    }
+}
+
+function exportCurrentMapToJsonArray() {
+    return myTiles.map((row, y) =>
+        row.map((tile, x) => ({
+            x: x,
+            y: y,
+            type: tile.type,
+            explored: tile.explored,
+            hasTrap: tile.hasTrap
+        }))
+    );
+}
+
 function onStartGame() {
     rebuildContextMenu();
 
-    assets.loadAll(() => {
+    assets.loadAll(async () => {
         myGameArea.start();
 
-        for (let y = 0; y < GRID_SIZE; y++) {
-            myTiles[y] = [];
-            for (let x = 0; x < GRID_SIZE; x++) {
-                let rand = Math.random();
-                let terrainKey = "PLAINS";
-                if (rand < 0.1) terrainKey = "MOUNTAIN";
-                else if (rand < 0.2) terrainKey = "WATER";
-                else if (rand < 0.4) terrainKey = "FOREST";
-
-                let tile = new component(
-                    TILE_SIZE,
-                    TILE_SIZE,
-                    assets.tiles[terrainKey],
-                    x * TILE_SIZE,
-                    y * TILE_SIZE
-                );
-                tile.type = terrainKey;
-                myTiles[y][x] = tile;
-            }
+        const loadedMapJsonArray = await tryLoadMapJsonArray();
+        if (loadedMapJsonArray) {
+            applyMapJsonArray(loadedMapJsonArray);
+            generatedMapJsonArray = exportCurrentMapToJsonArray();
+            console.log("[MAP] Map aus /map.json geladen und als JSON-Array gespeichert:", generatedMapJsonArray);
+        } else {
+            const randomMapJsonArray = createRandomMapJsonArray();
+            applyMapJsonArray(randomMapJsonArray);
+            generatedMapJsonArray = exportCurrentMapToJsonArray();
+            console.log("[MAP] Zufallsmap erstellt und als JSON-Array gespeichert:", generatedMapJsonArray);
         }
-
-        // Convert runtime tile objects into a clean JSON array for backend transfer.
-        generatedMapJsonArray = myTiles.map((row, y) =>
-            row.map((tile, x) => ({
-                x: x,
-                y: y,
-                type: tile.type,
-                explored: tile.explored,
-                hasTrap: tile.hasTrap
-            }))
-        );
-
-        console.log("[MAP] Generierte Map wurde als JSON-Array gespeichert:", generatedMapJsonArray);
 
         if (!isMultiplayer) {
             myUnits.push(new unit(TILE_SIZE, TILE_SIZE, assets.tiles.PIONEER_RED, 1, 1, "RED", 0, 0));
