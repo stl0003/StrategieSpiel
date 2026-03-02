@@ -1,18 +1,15 @@
 # Testing Procedures
 
 ## Scope
-This guide covers:
-1. Baseline local validation for the game server and frontend.
-2. Tests for map loading from backend endpoint `/api/game/state` in `wwwroot/js/game.js`.
-3. Validation that the loaded JSON is applied to runtime tiles (`myTiles`).
-4. Validation of 500ms map info sync (`/api/game/mapinfo`) for unit/item positions.
+This guide covers baseline checks for:
+1. Server startup and health endpoint.
+2. Map state loading from `/api/game/state`.
+3. Realtime sync polling via `/api/game/mapinfo`.
+4. Player actions via `/api/game/action`.
 
 ## Prerequisites
 - .NET SDK compatible with project target (`net10.0`).
 - A modern browser with DevTools (Chrome/Edge).
-- Backend map source configured for `GET /api/game/state`:
-  - `GameState:MapFilePath`, or
-  - environment variable `GAME_MAP_JSON_PATH`.
 
 ## Local Smoke Test
 1. Restore and build:
@@ -24,96 +21,55 @@ This guide covers:
    ```powershell
    dotnet run
    ```
-3. Open the app (default route is `Home/Lobby`).
-4. Verify page assets load (tiles, JS, CSS) and no blocking startup errors appear in terminal.
+3. Open the app (default route: `/Home/Lobby`).
+4. Verify static assets (tiles, JS, CSS) load and startup logs show no blocking errors.
 
-## Map Loading Test (`/api/game/state`)
-1. Open browser DevTools Console.
-2. Reload the page to trigger `onStartGame()`.
-3. Confirm this log appears exactly once per page load:
+## Health Check (`/health`)
+1. Request:
    ```text
-   [MAP] Map vom Backend (/api/game/state) geladen.
+   GET /health
    ```
-4. If backend map is missing/invalid, confirm error appears:
-   ```text
-   [MAP] Konnte Map nicht vom Backend laden (/api/game/state). Frontend-Map-Start abgebrochen.
-   ```
-5. In this error case, no map should be generated on the frontend.
+2. Expected:
+   - HTTP `200 OK`
+   - Body contains `Healthy`
 
-## Applied Map Validation
-1. Validate structure in Console:
+## Game State Check (`/api/game/state`)
+1. Request:
+   ```text
+   GET /api/game/state?lobbyCode=<code>
+   ```
+2. Expected:
+   - HTTP `200 OK`
+   - Response object with `tiles`, `units`, `items` (and optional `buildings`)
+   - `tiles` is a 30x30 grid
+3. Frontend check in DevTools Console:
    ```javascript
    myTiles.length === 30
    myTiles.every(r => r.length === 30)
-   myTiles[0][0] // expects tile object with .type / .explored / .hasTrap
    ```
-2. Validate values:
-   - `myTiles[0][0].type` is one of `PLAINS|FOREST|MOUNTAIN|WATER`.
-   - `myTiles[0][0].explored` and `myTiles[0][0].hasTrap` are booleans.
 
-## Where to Find the JSON
-- Location: Browser DevTools -> `Console` tab.
-- Source 1: Startup log entry:
-  ```text
-  [MAP] Map vom Backend (/api/game/state) geladen.
-  ```
-  Request payload is fetched from backend and applied into `myTiles`.
-- Source 2: Inspect loaded runtime tiles:
-  ```javascript
-  myTiles
-  ```
-
-## Backend Endpoint Check
-Use this endpoint directly to validate backend delivery:
-```text
-GET /api/game/state
-```
-Expected: HTTP 200 and either:
-- a 30x30 tile array directly, or
-- a state object containing `tiles` (or `gameModel.tiles` / `gameState.tiles`).
-
-## MapInfo Sync Test (`/api/game/mapinfo`)
-1. Join or create a lobby so `lobbyCode` is present.
-2. Open DevTools -> `Network` and filter for `mapinfo`.
-3. Confirm requests are sent every ~500ms to:
-   ```text
-   /api/game/mapinfo?lobbyCode=<code>
-   ```
-4. Confirm request method is `GET` (current backend contract).
-5. Move a unit and confirm next polls still succeed and response updates are applied.
-6. If backend responds with `units/items`, confirm local state updates:
-   ```javascript
-   myUnits.map(u => ({ playerId: u.playerId, x: u.gridX, y: u.gridY }))
-   myItems.map(i => ({ type: i.type, x: i.gridX, y: i.gridY }))
-   ```
-7. Check local snapshot logging in Console:
-   - Look for `[MAPINFO][SEND]` and inspect `localSnapshot`.
-8. Check sync health state in Console:
+## MapInfo Sync Check (`/api/game/mapinfo`)
+1. Join or create a lobby so `lobbyCode` is set.
+2. In DevTools `Network`, filter for `mapinfo`.
+3. Confirm `GET /api/game/mapinfo?lobbyCode=<code>` is called about every 500ms.
+4. Confirm responses are `200` and include `units` and `items`.
+5. Optional runtime status:
    ```javascript
    getMapInfoSyncStatus()
    ```
-   Expected:
-   - `enabled: true`
-   - `inFlight` toggles while requests run
-   - `consecutiveFailures` returns to `0` on success
-   - `msSinceLastSuccess` stays low during normal operation
+   Expected: `enabled: true`, `consecutiveFailures: 0` during stable operation.
 
-## Movement -> Backend Action Test (`/api/game/action`)
-1. Open DevTools -> `Network` and filter for `action`.
-2. Move a unit via click action (`Move`) or keyboard (`W/A/S/D`).
-3. Confirm frontend sends:
+## Action Check (`/api/game/action`)
+1. In DevTools `Network`, filter for `action`.
+2. Move a unit (click action or `W/A/S/D`).
+3. Confirm request:
    ```text
    POST /api/game/action?lobbyCode=<code>
    ```
-4. Confirm request body contains:
-   - `unitId`
-   - `action: "move"`
-   - `targetX`, `targetY`
-   - optional `playerId`
-5. Confirm response is `200` with updated `tiles/units/items`.
-6. Verify unit position remains stable (no rubberband back) while mapinfo polling continues.
+4. Confirm body includes `unitId`, `action`, `targetX`, `targetY` (optional `playerId`).
+5. Confirm response is `200` with updated state.
 
-## Regression Checks
-- Unit movement and trap placement still work after startup.
-- Multiplayer start/game update flows still run without JS errors.
-- Frontend does not generate random terrain anymore; map source is backend (`/api/game/state`) only.
+## Regression Checklist
+- Unit move/attack/trap actions work without JS errors.
+- Item spawn and pickup still sync to the client.
+- Lobby + WebSocket flow still starts and runs after page load.

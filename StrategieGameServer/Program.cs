@@ -1,10 +1,11 @@
 using StrategieGameServer.WebSocket;
 using StrategieGameServer.Models;
 using Microsoft.EntityFrameworkCore;
-using StrategieGameServer.Data;   // für GameDbContext
+using StrategieGameServer.Data;   // for GameDbContext
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
+builder.Services.AddHealthChecks();
 builder.Services.AddSingleton<LobbyManager>();
 builder.Services.AddSingleton<WebSocketConnectionManager>();
 builder.Services.AddScoped<GameWebSocketHandler>();
@@ -33,6 +34,7 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 app.UseWebSockets();
+app.MapHealthChecks("/health");
 
 app.Map("/ws", async context =>
 {
@@ -54,3 +56,4 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Lobby}/{id?}");
 
 app.Run();
+

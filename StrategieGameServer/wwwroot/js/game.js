@@ -489,7 +489,7 @@ function unit(width, height, img, gridX, gridY, nameKey, id = 0, playerId = 0) {
 
     this.update = function () {
         let ctx = myGameArea.context;
-        let targetX = this.gridX * TILE_SIZEd
+        let targetX = this.gridX * TILE_SIZE
         let targetY = this.gridY * TILE_SIZE;
         this.x += (targetX - this.x) * 0.1;
         this.y += (targetY - this.y) * 0.1;
