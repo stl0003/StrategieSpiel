@@ -151,23 +151,49 @@ namespace StrategieGameServer.Controllers
             state.Tiles[ty][tx].HasTrap = true;
         }
 
-        private static GameStateDto MapToDto(GameState state) => new()
+        private static GameStateDto MapToDto(GameState state)
         {
-            Tiles = state.Tiles.Select(row => row.Select(t => new TileDto { Type = t.Type, Explored = t.Explored, HasTrap = t.HasTrap }).ToArray()).ToArray(),
-            Units = state.Units.Select(u => new UnitDto
+            var tiles = new TileDto[state.Tiles.Length][];
+            for (int y = 0; y < state.Tiles.Length; y++)
             {
-                Id = u.Id,
-                PlayerId = u.PlayerId,
-                NameKey = u.NameKey,
-                GridX = u.GridX,
-                GridY = u.GridY,
-                Hp = u.Hp,
-                MaxHp = u.MaxHp,
-                Inventory = u.Inventory
-            }).ToList(),
-            Items = state.Items.Select(i => new ItemDto { GridX = i.GridX, GridY = i.GridY, Type = i.Type }).ToList(),
-            Buildings = new()
-        };
+                tiles[y] = new TileDto[state.Tiles[y].Length];
+                for (int x = 0; x < state.Tiles[y].Length; x++)
+                {
+                    var t = state.Tiles[y][x];
+                    tiles[y][x] = new TileDto
+                    {
+                        X = x,
+                        Y = y,
+                        Type = t.Type,
+                        Explored = t.Explored,
+                        HasTrap = t.HasTrap
+                    };
+                }
+            }
+
+            return new GameStateDto
+            {
+                Tiles = tiles,
+                Units = state.Units.Select(u => new UnitDto
+                {
+                    Id = u.Id,
+                    PlayerId = u.PlayerId,
+                    NameKey = u.NameKey,
+                    GridX = u.GridX,
+                    GridY = u.GridY,
+                    Hp = u.Hp,
+                    MaxHp = u.MaxHp,
+                    Inventory = u.Inventory
+                }).ToList(),
+                Items = state.Items.Select(i => new ItemDto
+                {
+                    GridX = i.GridX,
+                    GridY = i.GridY,
+                    Type = i.Type
+                }).ToList(),
+                Buildings = new() // falls du Buildings später brauchst
+            };
+        }
     }
 
     public class ActionRequest
@@ -204,6 +230,8 @@ namespace StrategieGameServer.Controllers
 
     public class TileDto
     {
+        public int X { get; set; }
+        public int Y { get; set; }
         public string Type { get; set; } = string.Empty;
         public bool Explored { get; set; }
         public bool HasTrap { get; set; }
