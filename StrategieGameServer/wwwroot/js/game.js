@@ -10,6 +10,7 @@ const GRID_SIZE = 30;
 const TILE_SIZE = 24;
 
 const myTiles = [];
+let generatedMapJsonArray = [];
 let selectedUnit = null;
 let myUnits = [];
 let myBuildings = [];
@@ -1294,6 +1295,19 @@ function onStartGame() {
                 myTiles[y][x] = tile;
             }
         }
+
+        // Convert runtime tile objects into a clean JSON array for backend transfer.
+        generatedMapJsonArray = myTiles.map((row, y) =>
+            row.map((tile, x) => ({
+                x: x,
+                y: y,
+                type: tile.type,
+                explored: tile.explored,
+                hasTrap: tile.hasTrap
+            }))
+        );
+
+        console.log("[MAP] Generierte Map wurde als JSON-Array gespeichert:", generatedMapJsonArray);
 
         if (!isMultiplayer) {
             myUnits.push(new unit(TILE_SIZE, TILE_SIZE, assets.tiles.PIONEER_RED, 1, 1, "RED", 0, 0));
